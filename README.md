@@ -1,3 +1,5 @@
+![hop logo](https://raw.githubusercontent.com/Nom-nom-hub/hop-run/main/docs/favicon.svg)
+
 # hop-run
 
 [![npm](https://img.shields.io/npm/v/hop-run)](https://www.npmjs.com/package/hop-run)
