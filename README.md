@@ -1,10 +1,10 @@
-![hop logo](https://nom-nom-hub.github.io/hop-run/favicon.svg)
+[![hop logo](https://nom-nom-hub.github.io/hop-run/favicon.svg)](https://nom-nom-hub.github.io/hop-run/)
 
 # hop-run
 
 [![npm](https://img.shields.io/npm/v/hop-run)](https://www.npmjs.com/package/hop-run)
 [![CI](https://github.com/Nom-nom-hub/hop-run/actions/workflows/ci.yml/badge.svg)](https://github.com/Nom-nom-hub/hop-run/actions/workflows/ci.yml)
-[![license](https://img.shields.io/npm/l/hop-run)](LICENSE)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![website](https://img.shields.io/badge/website-hop--run-22d3ee)](https://nom-nom-hub.github.io/hop-run/)
 
 Zero-config CLI that finds runnable projects in subdirectories and runs their
