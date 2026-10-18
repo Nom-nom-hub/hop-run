@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+*.log
+*.tgz
+*.tsbuildinfo
+.hyperglob/
+.DS_Store
+Thumbs.db

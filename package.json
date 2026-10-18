@@ -1,0 +1,58 @@
+{
+  "name": "hop-run",
+  "version": "0.1.0",
+  "description": "Zero-config CLI that detects runnable projects in subdirectories and runs their scripts concurrently.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Teck <ftwenty903@gmail.com>",
+  "homepage": "https://github.com/Nom-nom-hub/hop-run#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nom-nom-hub/hop-run.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Nom-nom-hub/hop-run/issues"
+  },
+  "keywords": [
+    "cli",
+    "runner",
+    "monorepo",
+    "scripts",
+    "concurrently",
+    "process-manager",
+    "dev-server",
+    "port",
+    "npm-scripts",
+    "developer-tools"
+  ],
+  "bin": {
+    "hop": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run typecheck && npm test"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.8.1",
+    "commander": "^15.0.0",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}
