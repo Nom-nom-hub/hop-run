@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { realpathSync } from 'node:fs';
 import path from 'node:path';
 import type { ProjectTarget } from './scanner.js';
 
@@ -85,11 +86,36 @@ function isInside(dir: string, file: string): boolean {
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
 
+/**
+ * Canonical absolute path. Git reports paths through the OS (getcwd), which
+ * resolves symlinks — on macOS `/var` becomes `/private/var`, on Windows
+ * junctions and 8.3 short names are expanded. Scanned project paths are built
+ * from whatever directory hop was started in, so both sides are canonicalized
+ * before they are compared. Deleted files, which `git status` still reports,
+ * fall back to canonicalizing their parent directory.
+ */
+function canonical(file: string): string {
+  try {
+    return realpathSync.native(file);
+  } catch {
+    try {
+      return path.join(realpathSync.native(path.dirname(file)), path.basename(file));
+    } catch {
+      return file;
+    }
+  }
+}
+
 /** Targets owning at least one changed file, keyed by target name. */
 export function dirtyFileCounts(targets: ProjectTarget[], files: string[]): Map<string, number> {
   const counts = new Map<string, number>();
+  if (files.length === 0) {
+    return counts; // nothing changed anywhere: skip the filesystem lookups
+  }
+  const canonicalFiles = files.map((file) => canonical(file));
   for (const target of targets) {
-    const own = files.filter((file) => isInside(target.path, file)).length;
+    const dir = canonical(target.path);
+    const own = canonicalFiles.filter((file) => isInside(dir, file)).length;
     if (own > 0) {
       counts.set(target.name, own);
     }

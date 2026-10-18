@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { realpathSync } from 'node:fs';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -69,7 +70,9 @@ describe('dirtyFileCounts / dirtyTargets', () => {
   let targets: ProjectTarget[];
 
   beforeEach(async () => {
-    root = await mkdtemp(path.join(tmpdir(), 'hop-git-'));
+    // Canonicalize: git reports real paths (macOS /var → /private/var, Windows
+    // junctions and 8.3 short names), so expectations must use the same form.
+    root = realpathSync(await mkdtemp(path.join(tmpdir(), 'hop-git-')));
     targets = [
       { name: 'frontend', path: path.join(root, 'frontend'), type: 'node', scripts: { dev: 'vite' } },
       { name: 'backend', path: path.join(root, 'backend'), type: 'node', scripts: { start: 'node server.js' } },
@@ -143,7 +146,10 @@ describe('changedFiles (live repository)', () => {
   let repo: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(path.join(tmpdir(), 'hop-gitrepo-'));
+    // Canonicalize: `git rev-parse --show-toplevel` returns the real path, and
+    // the temp directory may be behind a symlink (macOS App Translocation,
+    // Windows raw `%TEMP%`, CI sandboxes).
+    root = realpathSync(await mkdtemp(path.join(tmpdir(), 'hop-gitrepo-')));
     repo = path.join(root, 'repo');
     await mkdir(repo, { recursive: true });
     git(repo, ['init', '-q']);
@@ -200,6 +206,22 @@ describe('changedFiles (live repository)', () => {
 
     expect(fromSubdir).toEqual(fromRoot);
     expect(listsPath(fromSubdir, path.join(repo, 'backend', 'server.ts'))).toBe(true);
+  });
+
+  maybe('matches scanned targets reached through a symlinked path', async () => {
+    // A hop run started behind a symlink/junction sees project paths through the
+    // link while git reports the real location; the mapping must still match.
+    const link = path.join(root, 'linked');
+    await symlink(repo, link, process.platform === 'win32' ? 'junction' : 'dir');
+    await writePath(path.join(repo, 'backend', 'server.ts'), 'export const server = 4;\n');
+
+    const files = changedFiles(link);
+    const targets: ProjectTarget[] = [
+      { name: 'backend', path: path.join(link, 'backend'), type: 'node', scripts: { start: 'node server.js' } },
+    ];
+
+    expect(dirtyFileCounts(targets, files).get('backend')).toBe(1);
+    expect(dirtyTargets(targets, files).map((target) => target.name)).toEqual(['backend']);
   });
 
   maybe('returns nothing for a clean working tree', () => {
