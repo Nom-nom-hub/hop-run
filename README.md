@@ -244,3 +244,7 @@ handling is plain `node:child_process`.
 - Dependency waiting is heuristic: ports referenced by a project are only
   awaited when a *selected* sibling exposes them, unless they are listed in
   `hop.waitFor`. Compose publishing is read from the short `ports:` list syntax.
+
+## License
+
+MIT © 2026 [Teck](https://github.com/Nom-nom-hub). See [LICENSE](LICENSE).
