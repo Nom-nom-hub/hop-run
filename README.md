@@ -1,4 +1,4 @@
-![hop logo](https://raw.githubusercontent.com/Nom-nom-hub/hop-run/main/docs/favicon.svg)
+![hop logo](https://nom-nom-hub.github.io/hop-run/favicon.svg)
 
 # hop-run
 
