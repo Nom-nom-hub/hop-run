@@ -72,7 +72,7 @@ describe('dirtyFileCounts / dirtyTargets', () => {
   beforeEach(async () => {
     // Canonicalize: git reports real paths (macOS /var → /private/var, Windows
     // junctions and 8.3 short names), so expectations must use the same form.
-    root = realpathSync(await mkdtemp(path.join(tmpdir(), 'hop-git-')));
+    root = realpathSync.native(await mkdtemp(path.join(tmpdir(), 'hop-git-')));
     targets = [
       { name: 'frontend', path: path.join(root, 'frontend'), type: 'node', scripts: { dev: 'vite' } },
       { name: 'backend', path: path.join(root, 'backend'), type: 'node', scripts: { start: 'node server.js' } },
@@ -149,7 +149,7 @@ describe('changedFiles (live repository)', () => {
     // Canonicalize: `git rev-parse --show-toplevel` returns the real path, and
     // the temp directory may be behind a symlink (macOS App Translocation,
     // Windows raw `%TEMP%`, CI sandboxes).
-    root = realpathSync(await mkdtemp(path.join(tmpdir(), 'hop-gitrepo-')));
+    root = realpathSync.native(await mkdtemp(path.join(tmpdir(), 'hop-gitrepo-')));
     repo = path.join(root, 'repo');
     await mkdir(repo, { recursive: true });
     git(repo, ['init', '-q']);

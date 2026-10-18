@@ -91,17 +91,26 @@ function isInside(dir: string, file: string): boolean {
  * resolves symlinks — on macOS `/var` becomes `/private/var`, on Windows
  * junctions and 8.3 short names are expanded. Scanned project paths are built
  * from whatever directory hop was started in, so both sides are canonicalized
- * before they are compared. Deleted files, which `git status` still reports,
- * fall back to canonicalizing their parent directory.
+ * before they are compared.
+ *
+ * Paths that do not exist yet (deleted files, or unit tests using synthetic
+ * trees) are canonicalized through their nearest existing ancestor, keeping the
+ * missing segments as-is.
  */
-function canonical(file: string): string {
-  try {
-    return realpathSync.native(file);
-  } catch {
+function canonical(target: string): string {
+  const resolved = path.resolve(target);
+  const missing: string[] = [];
+  let current = resolved;
+  for (;;) {
     try {
-      return path.join(realpathSync.native(path.dirname(file)), path.basename(file));
+      return path.join(realpathSync.native(current), ...missing.reverse());
     } catch {
-      return file;
+      const parent = path.dirname(current);
+      if (parent === current) {
+        return resolved; // nothing along the path exists
+      }
+      missing.push(path.basename(current));
+      current = parent;
     }
   }
 }
