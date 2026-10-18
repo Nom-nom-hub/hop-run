@@ -39,8 +39,16 @@ function holdPort(port = 0): Promise<HeldPort> {
   });
 }
 
-async function pickFreePort(start = 22_000): Promise<number> {
-  const port = await findFreePort(start);
+/**
+ * Random per-process phase so two suites running at once (hop can start this
+ * repo's `test` and `test:watch` scripts in parallel) never hunt the same
+ * ports. The 22_500 base and the phase below 1000 keep this band clear of the
+ * 21_000 band in ports.test.ts and the 24_000+ bands in executor.test.ts.
+ */
+const PORT_PHASE = Math.floor(Math.random() * 1_000);
+
+async function pickFreePort(start = 22_500): Promise<number> {
+  const port = await findFreePort(start + PORT_PHASE);
   if (port === null) {
     throw new Error(`no free port above ${start}`);
   }

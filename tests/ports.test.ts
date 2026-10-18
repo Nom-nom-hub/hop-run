@@ -18,6 +18,14 @@ import {
 /** Base for port hunting: below the Windows ephemeral range, so it stays quiet. */
 const BASE_PORT = 21_000;
 
+/**
+ * Random per-process phase so two suites running at once (hop can start this
+ * repo's `test` and `test:watch` scripts in parallel) never hunt the same
+ * ports. The bands of the sibling test files are spaced 1000 apart, so a phase
+ * below 1000 keeps every band disjoint.
+ */
+const PORT_PHASE = Math.floor(Math.random() * 1_000);
+
 interface HeldPort {
   port: number;
   close(): Promise<void>;
@@ -44,7 +52,7 @@ function holdPort(port = 0): Promise<HeldPort> {
 
 /** Picks a free port that nothing holds. */
 async function pickFreePort(start = BASE_PORT): Promise<number> {
-  const port = await findFreePort(start);
+  const port = await findFreePort(start + PORT_PHASE);
   if (port === null) {
     throw new Error(`no free port above ${start}`);
   }
@@ -53,7 +61,7 @@ async function pickFreePort(start = BASE_PORT): Promise<number> {
 
 /** Picks two consecutive free ports (for "nothing nearby works" cases). */
 async function pickFreePair(start = BASE_PORT): Promise<[number, number]> {
-  for (let port = start; port < start + 300; port += 1) {
+  for (let port = start + PORT_PHASE; port < start + PORT_PHASE + 300; port += 1) {
     if ((await isPortFree(port)) && (await isPortFree(port + 1))) {
       return [port, port + 1];
     }

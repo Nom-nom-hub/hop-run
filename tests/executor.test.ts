@@ -57,8 +57,16 @@ function holdPort(port = 0): Promise<HeldPort> {
   });
 }
 
-async function pickFreePort(start = 23_000): Promise<number> {
-  const port = await findFreePort(start);
+/**
+ * Random per-process phase so two suites running at once (hop can start this
+ * repo's `test` and `test:watch` scripts in parallel) never hunt the same
+ * ports. Bands are spaced 1000 apart and the phase stays below 1000, so they
+ * cannot overlap — neither with each other nor with ports/health.test.ts.
+ */
+const PORT_PHASE = Math.floor(Math.random() * 1_000);
+
+async function pickFreePort(start = 24_000): Promise<number> {
+  const port = await findFreePort(start + PORT_PHASE);
   if (port === null) {
     throw new Error(`no free port above ${start}`);
   }
@@ -517,7 +525,7 @@ describe('dependency handshakes', () => {
 
   it('holds a dependent back until its service is listening', async () => {
     const capture = createCapture();
-    const port = await pickFreePort(24_000);
+    const port = await pickFreePort(25_000);
     const apiDir = path.join(root, 'api');
     const frontendDir = path.join(root, 'frontend');
     await mkdir(apiDir, { recursive: true });
@@ -543,6 +551,9 @@ describe('dependency handshakes', () => {
       },
     );
 
+    // Precondition: the service must actually claim its port, or the gate is
+    // meaningless — fail here rather than later on a confusing `interrupted`.
+    expect(await waitUntil(() => capture.text().includes(`listening on ${port}`), 10_000)).toBe(true);
     expect(await waitUntil(() => capture.text().includes('frontend started'), 10_000)).toBe(true);
     process.emit('SIGINT', 'SIGINT');
     const { interrupted, results } = await run;
@@ -557,7 +568,7 @@ describe('dependency handshakes', () => {
 
   it('waits for a docker service published by a compose file', async () => {
     const capture = createCapture();
-    const port = await pickFreePort(24_500);
+    const port = await pickFreePort(26_000);
     const databaseDir = path.join(root, 'database');
     const apiDir = path.join(root, 'api');
     await mkdir(databaseDir, { recursive: true });
@@ -589,6 +600,7 @@ describe('dependency handshakes', () => {
       },
     );
 
+    expect(await waitUntil(() => capture.text().includes(`listening on ${port}`), 10_000)).toBe(true);
     expect(await waitUntil(() => capture.text().includes('api started'), 10_000)).toBe(true);
     process.emit('SIGINT', 'SIGINT');
     await run;
@@ -601,7 +613,7 @@ describe('dependency handshakes', () => {
 
   it('releases a dependent that never arrives after the timeout, without failing it', async () => {
     const capture = createCapture();
-    const deadPort = await pickFreePort(25_000);
+    const deadPort = await pickFreePort(27_000);
     await writeFile(
       path.join(root, 'package.json'),
       JSON.stringify({ name: 'frontend', hop: { waitFor: [deadPort] } }),
@@ -629,7 +641,7 @@ describe('dependency handshakes', () => {
 
   it('skips handshakes entirely with waitForDependencies: false', async () => {
     const capture = createCapture();
-    const deadPort = await pickFreePort(25_500);
+    const deadPort = await pickFreePort(28_000);
     await writeFile(
       path.join(root, 'package.json'),
       JSON.stringify({ name: 'frontend', hop: { waitFor: [deadPort] } }),
@@ -654,7 +666,7 @@ describe('dependency handshakes', () => {
 
   it('does not start a waiting dependent when hop is interrupted', async () => {
     const capture = createCapture();
-    const deadPort = await pickFreePort(26_000);
+    const deadPort = await pickFreePort(29_000);
     await writeFile(
       path.join(root, 'package.json'),
       JSON.stringify({ name: 'frontend', hop: { waitFor: [deadPort] } }),
