@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>404 — hop</title>
+    <meta name="description" content="That page hopped away. Head back to the hop homepage." />
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#080b10" />
+    <link rel="icon" type="image/svg+xml" href="/hop-run/favicon.svg" />
+    <!-- Absolute paths on purpose: GitHub Pages serves this file for unknown
+         URLs at any depth, where relative hrefs would resolve wrong. -->
+    <link rel="stylesheet" href="/hop-run/styles.css" />
+    <style>
+      .lost {
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+        padding: 48px 24px;
+      }
+
+      .lost-card {
+        width: 100%;
+        max-width: 480px;
+        padding: 32px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: linear-gradient(180deg, #0c121b, #0a0f17);
+        box-shadow: 0 34px 80px -46px rgba(0, 0, 0, 1);
+      }
+
+      .lost-code {
+        margin: 0;
+        color: #c9d6e4;
+        font-family: var(--font-mono);
+        font-size: 13px;
+        line-height: 1.7;
+        white-space: pre-wrap;
+      }
+
+      .lost h1 {
+        margin-top: 20px;
+        font-size: 24px;
+        letter-spacing: -0.015em;
+      }
+
+      .lost p {
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 14.5px;
+      }
+
+      .lost-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 24px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="lost">
+      <div class="lost-card">
+        <p class="lost-code"><span class="c-dim">$</span> <span class="c-cmd">hop</span> this-page
+<span class="c-warn">[hop] ⚠ no project matched “this-page”</span>
+<span class="c-hop">[hop]</span> <span class="c-dim">3 projects detected — but not this one</span></p>
+        <h1>That page hopped away.</h1>
+        <p>The URL you followed doesn't exist here. The homepage does — and it knows where everything else went.</p>
+        <div class="lost-actions">
+          <a class="btn btn-primary" href="/hop-run/">Back to the homepage</a>
+          <a class="btn" href="https://github.com/Nom-nom-hub/hop-run" rel="noopener">GitHub<span aria-hidden="true"> ↗</span></a>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>hop — one command for every project in your repo</title>
+    <meta
+      name="description"
+      content="hop is a zero-config dev-loop conductor: it finds runnable Node, Docker, Python and Go projects in your repo and runs the scripts you pick — with prefixed output, resolved port conflicts and dependencies that wait their turn."
+    />
+    <meta name="theme-color" content="#080b10" />
+    <link rel="canonical" href="https://nom-nom-hub.github.io/hop-run/" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="hop — one command for every project in your repo" />
+    <meta
+      property="og:description"
+      content="Zero-config dev-loop conductor for Node, Docker, Python and Go projects: discovery, port arbitration, dependency handshakes, one Ctrl+C."
+    />
+    <meta property="og:url" content="https://nom-nom-hub.github.io/hop-run/" />
+    <meta name="twitter:card" content="summary" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+
+    <header class="topbar">
+      <div class="wrap topbar-inner">
+        <a class="brand" href="#top" aria-label="hop — back to top">
+          <svg class="brand-mark" viewBox="0 0 32 32" width="26" height="26" aria-hidden="true">
+            <rect width="32" height="32" rx="9" fill="#0f1620" stroke="#1e2a3a" />
+            <path
+              d="M11 11l5 5-5 5"
+              fill="none"
+              stroke="#22d3ee"
+              stroke-width="2.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <rect x="19.5" y="19.5" width="4" height="4" rx="1.2" fill="#e879f9" />
+          </svg>
+          <span class="brand-name">hop</span>
+        </a>
+        <nav class="nav" aria-label="Sections">
+          <a href="#features">Features</a>
+          <a href="#startup">Startup</a>
+          <a href="#ecosystem">Ecosystem</a>
+          <a href="#limits">Limits</a>
+          <a href="#install">Install</a>
+          <a class="ext" href="https://github.com/Nom-nom-hub/hop-run" rel="noopener">GitHub<span aria-hidden="true"> ↗</span></a>
+          <a class="ext" href="https://www.npmjs.com/package/hop-run" rel="noopener">npm<span aria-hidden="true"> ↗</span></a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ hero -->
+      <section class="hero" id="top">
+        <div class="wrap hero-grid">
+          <div class="hero-copy">
+            <p class="eyebrow">zero-config dev-loop conductor</p>
+            <h1>One command for every project in the folder.</h1>
+            <p class="lede">
+              hop scans your repo for runnable <strong>Node, Docker, Python and Go</strong> projects and runs the
+              scripts you pick — side by side, with readable prefixed output, ports that never collide, and
+              dependencies that actually wait their turn.
+            </p>
+            <div class="cta">
+              <a class="btn btn-primary" href="#install">Install hop</a>
+              <a class="btn" href="https://github.com/Nom-nom-hub/hop-run" rel="noopener">View on GitHub<span aria-hidden="true"> ↗</span></a>
+            </div>
+            <div class="install-inline">
+              <code>npm install -g hop-run</code>
+              <button class="copy" type="button" data-copy="npm install -g hop-run" aria-label="Copy install command">
+                copy
+              </button>
+            </div>
+            <ul class="chips">
+              <li>Node ≥ 22.12</li>
+              <li>MIT</li>
+              <li>3 runtime deps</li>
+              <li>Windows · macOS · Linux</li>
+            </ul>
+          </div>
+
+          <div class="hero-term">
+            <figure class="term" aria-label="Terminal recording of hop running three projects">
+              <div class="term-bar">
+                <span class="dot dot-r" aria-hidden="true"></span>
+                <span class="dot dot-y" aria-hidden="true"></span>
+                <span class="dot dot-g" aria-hidden="true"></span>
+                <span class="term-title">hop — zsh</span>
+                <button class="term-replay" type="button" aria-label="Replay the demo">replay</button>
+              </div>
+              <!-- Each line is one source line on purpose: .tl keeps white-space:pre. -->
+              <pre class="term-body" data-demo><span class="tl" data-t="120"><span class="c-dim">$</span> <span class="c-cmd">hop</span></span>
+<span class="tl" data-t="140"><span class="c-hop">┌  hop · 3 projects detected</span></span>
+<span class="tl" data-t="60"><span class="c-hop">│</span></span>
+<span class="tl" data-t="80"><span class="c-title">◆  Select scripts to run</span></span>
+<span class="tl" data-t="60"><span class="c-hop">│</span>  ◻ api</span>
+<span class="tl" data-t="45"><span class="c-hop">│</span>  │ ◼ dev <span class="c-hint">(node src/server.js --port 8080)</span></span>
+<span class="tl" data-t="45"><span class="c-hop">│</span>  └ ◻ test</span>
+<span class="tl" data-t="60"><span class="c-hop">│</span>  ◻ database</span>
+<span class="tl" data-t="45"><span class="c-hop">│</span>  │ ◼ up <span class="c-hint">(docker compose up)</span></span>
+<span class="tl" data-t="45"><span class="c-hop">│</span>  └ ◻ down</span>
+<span class="tl" data-t="60"><span class="c-hop">│</span>  ◻ web <span class="c-changed">· 2 changed</span></span>
+<span class="tl" data-t="45"><span class="c-hop">│</span>  │ ◼ dev <span class="c-hint">(next dev)</span></span>
+<span class="tl" data-t="45"><span class="c-hop">│</span>  └ ◻ build</span>
+<span class="tl" data-t="80"><span class="c-hop">│</span>  ↑/↓ to navigate • Space: select • Enter: confirm</span>
+<span class="tl" data-t="60"><span class="c-hop">└</span></span>
+<span class="tl" data-t="420"> </span>
+<span class="tl" data-t="90">  <span class="c-cyan">api     </span>  dev  <span class="c-dim">node src/server.js --port 8080</span></span>
+<span class="tl" data-t="60">  <span class="c-magenta">database</span>  up   <span class="c-dim">docker compose up</span></span>
+<span class="tl" data-t="60">  <span class="c-amber">web     </span>  dev  <span class="c-dim">next dev</span></span>
+<span class="tl" data-t="450"> </span>
+<span class="tl" data-t="260"><span class="c-hop">[hop]</span> <span class="c-warn">⚠ port 8080 was blocked · redirecting [api] to port 8081</span></span>
+<span class="tl" data-t="320"><span class="c-hop">[hop]</span> <span class="c-dim">waiting for database :5432 before starting api</span></span>
+<span class="tl" data-t="380"><span class="c-magenta">[database]</span> db-1  | database system is ready to accept connections</span>
+<span class="tl" data-t="220"><span class="c-hop">[hop]</span> <span class="c-ok">✔</span> <span class="c-dim">database :5432 is up · 1.4s · starting api</span></span>
+<span class="tl" data-t="260"><span class="c-cyan">[api]     </span> server listening on :8081</span>
+<span class="tl" data-t="320"><span class="c-amber">[web]     </span> ▲ Next.js ready on http://localhost:3000<span class="cursor" aria-hidden="true"></span></span>
+              </pre>
+            </figure>
+            <p class="term-caption">
+              It just keeps running — one <kbd>Ctrl</kbd>+<kbd>C</kbd> stops every process tree in the selection.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ problem -->
+      <section class="section" id="problem">
+        <div class="wrap">
+          <div class="section-head reveal">
+            <p class="num">the ritual we keep rewriting</p>
+            <h2>Starting a repo shouldn't be a chore</h2>
+          </div>
+          <div class="grid-3">
+            <article class="card pain reveal">
+              <h3>Six terminals, six <code>cd</code>s</h3>
+              <p>One per subproject — plus the one you forgot to restart after pulling.</p>
+            </article>
+            <article class="card pain reveal">
+              <h3>Everything wants port 3000</h3>
+              <p>The second app dies with <code>EADDRINUSE</code> — or worse, quietly talks to the wrong service.</p>
+            </article>
+            <article class="card pain reveal">
+              <h3>Instant race conditions</h3>
+              <p>The API boots before Postgres is ready and greets you with <code>ECONNREFUSED</code>.</p>
+            </article>
+          </div>
+          <p class="punch reveal">
+            hop is the thin layer that makes that loop boring again — <em>discovery, arbitration, one terminal</em>.
+          </p>
+        </div>
+      </section>
+
+      <!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ features -->
+      <section class="section" id="features">
+        <div class="wrap">
+          <div class="section-head reveal">
+            <p class="num">01 — what hop does</p>
+            <h2>Discovery, not configuration</h2>
+            <p class="section-lede">
+              Point hop at a folder. It fingerprints what's inside, offers the scripts it found, and runs the ones
+              you pick — no manifest, no plugin, no workspace migration.
+            </p>
+          </div>
+
+          <div class="grid-features">
+            <article class="card feature reveal">
+              <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                <circle cx="10" cy="10" r="7" />
+                <circle cx="10" cy="10" r="2.5" />
+                <path d="M10 3v2" />
+              </svg>
+              <h3>Scans the tree you already have</h3>
+              <p>
+                The current folder and 3 levels below, skipping <code>node_modules</code>, <code>.git</code>,
+                <code>dist</code>, <code>venv</code> and dot-directories. Several fingerprints in one folder merge
+                into a single project; name collisions get namespaced (<code>build</code> vs
+                <code>docker:build</code>).
+              </p>
+              <pre class="snippet">package.json        → dev, build, test …
+Dockerfile          → build
+docker-compose.yml  → up, down
+requirements.txt    → install
+main.py             → run
+go.mod              → run, test</pre>
+            </article>
+
+            <article class="card feature reveal">
+              <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M4 5h8M4 10h8M4 15h4" />
+                <rect x="13.5" y="12.5" width="4.5" height="4.5" rx="1.2" />
+              </svg>
+              <h3>A picker that already knows git</h3>
+              <p>
+                Projects with uncommitted changes come pre-selected, marked <code>· 2 changed</code>. In practice
+                <code>hop</code> + <kbd>Enter</kbd> runs what you were just working on. <kbd>Space</kbd> toggles a
+                whole project row, <kbd>Ctrl</kbd>+<kbd>C</kbd> backs out without starting anything.
+              </p>
+              <pre class="snippet"><span class="c-hop">│</span>  ◻ web <span class="c-changed">· 2 changed</span>
+<span class="c-hop">│</span>  │ ◼ dev <span class="c-hint">(next dev)</span>
+<span class="c-hop">│</span>  └ ◻ build</pre>
+            </article>
+
+            <article class="card feature reveal">
+              <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M11.5 2.5 5 11h4l-1 6.5L15 9h-4l.5-6.5z" />
+              </svg>
+              <h3>Ports resolved before they collide</h3>
+              <p>
+                hop reads the port a project wants, walks upward when it's taken, rewrites the <code>--port</code>
+                flag and injects the new <code>PORT</code>. Ports are reserved per run, so two projects that both
+                want 3000 never fight. Docker targets are never rewritten — their compose host ports are reserved
+                instead.
+              </p>
+              <pre class="snippet"><span class="c-hop">[hop]</span> <span class="c-warn">⚠ port 8080 was blocked · redirecting [api] to port 8081</span>
+<span class="c-cyan">[api]</span> server bound 127.0.0.1:8081</pre>
+            </article>
+
+            <article class="card feature reveal">
+              <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                <circle cx="10" cy="10" r="7" />
+                <path d="M10 6v4l3 2" />
+              </svg>
+              <h3>Dependencies that actually wait</h3>
+              <p>
+                When a project clearly talks to a sibling — a <code>localhost:5432</code> in <code>.env</code>, a
+                proxy config, a URL in the script — hop holds it back until the port accepts connections. Spinner
+                on a TTY, a 30&nbsp;s breaker that warns and moves on, <code>--no-wait</code> to skip it all.
+              </p>
+              <pre class="snippet"><span class="c-hop">[hop]</span> <span class="c-dim">waiting for database :5432 before starting api</span>
+<span class="c-hop">[hop]</span> <span class="c-ok">✔</span> <span class="c-dim">database :5432 is up · 1.4s · starting api</span></pre>
+            </article>
+
+            <article class="card feature reveal">
+              <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                <rect x="2.5" y="4" width="15" height="12" rx="2" />
+                <path d="M6 9l2 2-2 2M10.5 13h3.5" />
+              </svg>
+              <h3>Output you can still read</h3>
+              <p>
+                Every line gets an aligned, colored <code>[folder]</code> tag, and children keep their own colors
+                even though hop pipes them. <kbd>Ctrl</kbd>+<kbd>C</kbd> stops everything: process-group kill on
+                POSIX, <code>taskkill /T /F</code> on Windows, with a hard-kill backstop after 5&nbsp;s. Exit codes
+                are honest: <code>0</code>, <code>1</code>, <code>130</code>.
+              </p>
+              <pre class="snippet"><span class="c-magenta">[database]</span> db-1  | ready to accept connections
+<span class="c-cyan">[api]     </span> server listening on :8081
+<span class="c-amber">[web]     </span> ▲ ready in 1.2s</pre>
+            </article>
+
+            <article class="card feature reveal">
+              <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                <rect x="3" y="4" width="14" height="12" rx="2" />
+                <path d="M7 10h6M10.5 7.5 13 10l-2.5 2.5" />
+              </svg>
+              <h3>Escape hatches for real projects</h3>
+              <p>
+                Run one script across every project, route it through the real package manager (hooks and npm env
+                included, detected from the nearest lockfile), or just look at what hop found before running
+                anything.
+              </p>
+              <pre class="snippet">hop dev              <span class="c-dim"># every "dev" script in the tree</span>
+hop dev --npm        <span class="c-dim"># through the real package manager</span>
+hop --list           <span class="c-dim"># what was detected, what would run</span>
+hop dev --no-wait    <span class="c-dim"># skip dependency handshakes</span></pre>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ startup -->
+      <section class="section" id="startup">
+        <div class="wrap">
+          <div class="section-head reveal">
+            <p class="num">02 — the startup rules</p>
+            <h2>Two problems, solved before the first line prints</h2>
+          </div>
+
+          <div class="split">
+            <article class="card rule reveal">
+              <h3>Which port will it use?</h3>
+              <ol class="rule-list">
+                <li><code>--port 3000</code> in the script command — rewritten if it has to move</li>
+                <li><code>PORT</code> in the environment</li>
+                <li><code>PORT=</code> in the project's <code>.env</code>, <code>.env.local</code> or <code>.env.development</code></li>
+              </ol>
+              <p>
+                Taken? hop walks upward, reserves the result for the run, and hands the child the new number through
+                <code>PORT</code> — real environment variables beat <code>.env</code> in every mainstream framework,
+                so injecting it is enough to move an app that reads a file.
+              </p>
+              <p class="note">
+                Ports that are hard-coded somewhere hop can't see (config files, <code>-p</code> short flags) are
+                left alone rather than guessed at.
+              </p>
+            </article>
+
+            <article class="card rule reveal">
+              <h3>What must be up first?</h3>
+              <ul class="rule-list">
+                <li>a service URL in <code>.env</code> that matches a port a selected sibling exposes</li>
+                <li>a bundler proxy config pointing at a local port</li>
+                <li>a <code>localhost:…</code> URL inside the script command itself</li>
+                <li>anything you declare in <code>"hop": { "waitFor": … }</code></li>
+              </ul>
+              <p>
+                The gate is a plain TCP check with an animated spinner until the port accepts connections. Timeout
+                at 30&nbsp;s warns and starts anyway — a handshake is advice, never a hard failure.
+              </p>
+              <pre class="snippet">{
+  "hop": {
+    "waitFor": [
+      5432,
+      "localhost:6379",
+      "http://127.0.0.1:8080/health"
+    ]
+  }
+}</pre>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ecosystem -->
+      <section class="section" id="ecosystem">
+        <div class="wrap">
+          <div class="section-head reveal">
+            <p class="num">03 — where hop sits</p>
+            <h2>Not a build system. Not an orchestrator. The layer in between.</h2>
+            <p class="section-lede">
+              There are excellent tools at every layer of a repository — and none of them answer the small question
+              you have forty times a day: <em>“start everything I'm working on, without fighting about ports.”</em>
+              That's the layer hop occupies.
+            </p>
+          </div>
+
+          <ol class="layers">
+            <li class="layer reveal">
+              <span class="layer-name">Builds &amp; CI</span>
+              <span class="layer-tools">Turborepo · Nx · moon · GitHub Actions</span>
+            </li>
+            <li class="layer reveal">
+              <span class="layer-name">Containers &amp; production</span>
+              <span class="layer-tools">Docker Compose · Kubernetes · systemd · PM2</span>
+            </li>
+            <li class="layer layer-hop reveal">
+              <span class="layer-name">Dev-loop conductors</span>
+              <span class="layer-tools">hop — discovery, port arbitration, readiness gates, one terminal</span>
+            </li>
+            <li class="layer reveal">
+              <span class="layer-name">Your projects</span>
+              <span class="layer-tools">Node · Docker · Python · Go — exactly as they are on disk</span>
+            </li>
+          </ol>
+          <p class="layer-note reveal">
+            hop drives the layer below it — including Docker — and otherwise stays out of the way. It writes no
+            files, keeps no state and never touches your build.
+          </p>
+
+          <div class="table-wrap reveal">
+            <table class="cmp">
+              <caption class="sr-only">How hop relates to tools in adjacent layers</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Neighbour</th>
+                  <th scope="col">Great at</th>
+                  <th scope="col">How hop differs</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">concurrently · npm-run-all</th>
+                  <td>Running a command list you write yourself inside one <code>package.json</code>.</td>
+                  <td>
+                    Same dev-time layer, different input: hop discovers the projects and their scripts instead of you
+                    listing commands — and adds the picker, git pre-selection, port arbitration and readiness gates.
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">Turborepo · Nx · moon</th>
+                  <td>Task graphs, content-hash caching, remote cache and CI acceleration for a workspace you instrument.</td>
+                  <td>
+                    A different layer: they optimise <em>tasks</em> in a workspace you opt into; hop conducts the
+                    <em>dev loop</em> in any folder, heterogeneous projects included, with nothing to adopt. They
+                    compose well — turbo for builds and CI, hop to bring the stack up.
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">Docker Compose · Kubernetes</th>
+                  <td>Declarative container orchestration, networks, volumes, production parity.</td>
+                  <td>
+                    Complementary: hop runs <code>docker compose up</code> as one participant, reserves the host
+                    ports compose publishes, and keeps native projects beside it. If everything you run is a
+                    container, compose alone is enough.
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">foreman · overmind · hivemind</th>
+                  <td>One <code>Procfile</code> declares process types; output is multiplexed (overmind adds tmux-backed controls).</td>
+                  <td>
+                    hop derives the process set from the folder layout rather than a Procfile, and adds the picker,
+                    port rewriting and TCP gates. If you already maintain a Procfile you like, those tools are the
+                    leaner choice.
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">PM2 · systemd</th>
+                  <td>Production supervision: restarts, clustering, boot persistence, log rotation.</td>
+                  <td>
+                    Deliberately dev-time only. hop starts the processes for a session and stops them together; it
+                    never supervises, restarts or daemonises anything.
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">VS Code compound launches</th>
+                  <td>Editor-bound multi-launch with debuggers attached to every process.</td>
+                  <td>
+                    Terminal-first and editor-agnostic. hop earns its keep on readiness gates, port conflicts and a
+                    single <kbd>Ctrl</kbd>+<kbd>C</kbd> — not on debug sessions.
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">tmuxinator · mprocs · run-pty</th>
+                  <td>Declarative terminals with one pane per command, and pretty multiplexing.</td>
+                  <td>
+                    No panes to arrange: interleaved, tagged lines and a selection you can filter. Nothing to
+                    declare — and it is the run itself, not a terminal layout around it.
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">make · just · task</th>
+                  <td>Explicit, repeatable recipes you write once and version with the repo.</td>
+                  <td>
+                    Discovery over declaration. Keep your recipes for the parts that deserve them; hop covers the
+                    common case — “just start this folder” — with nothing to write.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="reach">
+            <article class="card card-yes reveal">
+              <h3>Reach for hop when…</h3>
+              <ul>
+                <li>one folder holds several runnable projects, in mixed ecosystems</li>
+                <li>you want to start working with <code>hop</code> + <kbd>Enter</kbd>, not a setup ritual</li>
+                <li>dev services need ports that don't collide and a boot order that doesn't race</li>
+                <li>you want one <kbd>Ctrl</kbd>+<kbd>C</kbd> to leave no orphans behind</li>
+                <li>you'd rather not add a config file to a repo you don't own yet</li>
+              </ul>
+            </article>
+            <article class="card card-no reveal">
+              <h3>Reach for a neighbour when…</h3>
+              <ul>
+                <li>you need task graphs, caching or CI acceleration — that's Turbo/Nx/moon</li>
+                <li>everything you run is already a container — compose alone is fine</li>
+                <li>it's one package with two commands — <code>concurrently</code> is smaller</li>
+                <li>processes must survive the session — that's PM2 or systemd</li>
+                <li>a Procfile already describes your stack and overmind serves it well</li>
+              </ul>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ limits -->
+      <section class="section" id="limits">
+        <div class="wrap">
+          <div class="section-head reveal">
+            <p class="num">04 — in the interest of trust</p>
+            <h2>What hop intentionally is not</h2>
+            <p class="section-lede">
+              A tool's place in the ecosystem is also defined by what it refuses to do. hop is small on purpose.
+            </p>
+          </div>
+          <ul class="limits">
+            <li class="reveal">
+              <strong>No caching or task graph.</strong> hop starts processes; it doesn't hash inputs, watch files
+              or rebuild anything. Build systems do that better.
+            </li>
+            <li class="reveal">
+              <strong>Piped stdio.</strong> Output is piped to be tagged, so fully interactive children (a wizard
+              like <code>npm init</code>) may not get a TTY on stdin.
+            </li>
+            <li class="reveal">
+              <strong>Fingerprints only.</strong> No workspace-manager awareness (pnpm workspaces, turbo, nx), and
+              symlinked directories are skipped to stay cycle-safe.
+            </li>
+            <li class="reveal">
+              <strong>Conservative port edits.</strong> Only <code>--port</code>, <code>$PORT</code> and
+              <code>PORT=</code> in <code>.env*</code> are swapped — anything hard-coded elsewhere is left alone.
+            </li>
+            <li class="reveal">
+              <strong>Heuristic gating.</strong> A referenced port is only awaited when a selected sibling exposes
+              it, unless you declare it in <code>hop.waitFor</code>.
+            </li>
+            <li class="reveal">
+              <strong>Compose short syntax.</strong> Published ports are read from the <code>ports:</code> list
+              form; exotic mappings are not interpreted.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ install -->
+      <section class="section" id="install">
+        <div class="wrap">
+          <div class="section-head reveal">
+            <p class="num">05 — get started</p>
+            <h2>Sixty seconds, no config</h2>
+          </div>
+
+          <div class="install-grid">
+            <div class="cmd-card reveal">
+              <p class="cmd-label">Install once, use everywhere</p>
+              <div class="cmd">
+                <code>npm install -g hop-run</code>
+                <button class="copy" type="button" data-copy="npm install -g hop-run" aria-label="Copy npm install command">copy</button>
+              </div>
+              <p class="cmd-label">Or run it without installing</p>
+              <div class="cmd">
+                <code>npx hop-run</code>
+                <button class="copy" type="button" data-copy="npx hop-run" aria-label="Copy npx command">copy</button>
+              </div>
+              <p class="note">Requires Node.js 22.12 or newer. No accounts, no telemetry, no files written to your repo.</p>
+            </div>
+
+            <ol class="steps reveal">
+              <li>
+                <span class="step-num">1</span>
+                <div>
+                  <h3>Open the folder</h3>
+                  <p>Any repository with runnable subprojects — or a plain directory of experiments.</p>
+                </div>
+              </li>
+              <li>
+                <span class="step-num">2</span>
+                <div>
+                  <h3>Run <code>hop</code></h3>
+                  <p>
+                    Pick scripts in the picker (changed projects are pre-selected), or go straight to
+                    <code>hop dev</code> to run every <code>dev</code> script it found. <code>hop --list</code> shows
+                    the inventory first.
+                  </p>
+                </div>
+              </li>
+              <li>
+                <span class="step-num">3</span>
+                <div>
+                  <h3>Work, then <kbd>Ctrl</kbd>+<kbd>C</kbd></h3>
+                  <p>One signal stops every process tree in the selection, on Windows, macOS and Linux alike.</p>
+                </div>
+              </li>
+            </ol>
+          </div>
+
+          <div class="links reveal">
+            <a class="btn btn-primary" href="https://www.npmjs.com/package/hop-run" rel="noopener">Get it on npm<span aria-hidden="true"> ↗</span></a>
+            <a class="btn" href="https://github.com/Nom-nom-hub/hop-run#readme" rel="noopener">Read the README<span aria-hidden="true"> ↗</span></a>
+            <a class="btn" href="https://github.com/Nom-nom-hub/hop-run/blob/main/CHANGELOG.md" rel="noopener">Changelog<span aria-hidden="true"> ↗</span></a>
+            <a class="btn" href="https://github.com/Nom-nom-hub/hop-run/issues" rel="noopener">Report an issue<span aria-hidden="true"> ↗</span></a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="wrap footer-inner">
+        <span class="footer-brand">
+          <svg class="brand-mark" viewBox="0 0 32 32" width="20" height="20" aria-hidden="true">
+            <rect width="32" height="32" rx="9" fill="#0f1620" stroke="#1e2a3a" />
+            <path d="M11 11l5 5-5 5" fill="none" stroke="#22d3ee" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" />
+            <rect x="19.5" y="19.5" width="4" height="4" rx="1.2" fill="#e879f9" />
+          </svg>
+          hop
+        </span>
+        <span class="footer-note">
+          MIT © 2026 Teck · built so the dev loop gets boring again · <a href="https://github.com/Nom-nom-hub/hop-run" rel="noopener">source on GitHub</a>
+        </span>
+      </div>
+    </footer>
+
+    <script src="app.js" defer></script>
+  </body>
+</html>

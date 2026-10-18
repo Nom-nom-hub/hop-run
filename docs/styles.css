@@ -1,0 +1,1109 @@
+/* ==========================================================================
+   hop — docs site
+   Hand-rolled stylesheet: no framework, no CDN, no build step.
+   Terminal-dark, teal accent, monospace where it earns its keep.
+   ========================================================================== */
+
+/* --- tokens ------------------------------------------------------------- */
+
+:root {
+  color-scheme: dark;
+
+  --bg: #080b10;
+  --panel: #0d1219;
+  --panel-2: #0a0f17;
+  --border: #1b2431;
+  --border-soft: #151d28;
+
+  --ink: #e6edf6;
+  --muted: #93a1b5;
+  --dim: #6b7c93;
+
+  --cyan: #22d3ee;
+  --magenta: #e879f9;
+  --amber: #fbbf24;
+  --green: #34d399;
+
+  --font-sans: ui-sans-serif, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "JetBrains Mono", "SFMono-Regular", Consolas,
+    "Liberation Mono", monospace;
+
+  --radius: 14px;
+  --wrap: 1080px;
+}
+
+/* --- reset -------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 80px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(1100px 560px at 72% -12%, rgba(34, 211, 238, 0.1), transparent 62%),
+    radial-gradient(880px 480px at 6% -4%, rgba(232, 121, 249, 0.07), transparent 58%);
+  background-repeat: no-repeat;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+p,
+figure,
+ol,
+ul {
+  margin: 0;
+}
+
+a {
+  color: var(--cyan);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+::selection {
+  background: rgba(34, 211, 238, 0.28);
+}
+
+:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* --- primitives --------------------------------------------------------- */
+
+.wrap {
+  max-width: var(--wrap);
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip {
+  position: absolute;
+  left: -9999px;
+  top: 10px;
+  z-index: 100;
+  padding: 8px 14px;
+  background: var(--panel);
+  border: 1px solid var(--cyan);
+  border-radius: 8px;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.skip:focus {
+  left: 16px;
+}
+
+kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+code {
+  padding: 1px 5px;
+  border: 1px solid rgba(34, 211, 238, 0.14);
+  border-radius: 5px;
+  background: rgba(34, 211, 238, 0.07);
+  color: #bfe9f7;
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+/* --- top bar ------------------------------------------------------------ */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: rgba(8, 11, 16, 0.82);
+  border-bottom: 1px solid var(--border-soft);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.topbar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  height: 62px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.brand:hover {
+  text-decoration: none;
+}
+
+.brand-name {
+  font-family: var(--font-mono);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.brand-mark {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  font-size: 13.5px;
+}
+
+.nav a {
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.nav a:hover {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+/* --- buttons ------------------------------------------------------------ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 14.5px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: border-color 0.16s ease, transform 0.16s ease, background 0.16s ease;
+}
+
+.btn:hover {
+  border-color: #2a3a4e;
+  transform: translateY(-1px);
+  text-decoration: none;
+}
+
+.btn-primary {
+  border-color: rgba(34, 211, 238, 0.45);
+  background: linear-gradient(180deg, rgba(34, 211, 238, 0.22), rgba(34, 211, 238, 0.09));
+  color: #eafcff;
+}
+
+.btn-primary:hover {
+  border-color: var(--cyan);
+}
+
+.copy {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: color 0.14s ease, border-color 0.14s ease;
+}
+
+.copy:hover {
+  border-color: #2a3a4e;
+  color: var(--ink);
+}
+
+.copy.done {
+  border-color: rgba(52, 211, 153, 0.5);
+  color: var(--green);
+}
+
+/* --- hero --------------------------------------------------------------- */
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  padding: 64px 0 48px;
+}
+
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 44px 44px;
+  -webkit-mask-image: radial-gradient(700px 400px at 62% 0%, #000 18%, transparent 76%);
+  mask-image: radial-gradient(700px 400px at 62% 0%, #000 18%, transparent 76%);
+  pointer-events: none;
+}
+
+.hero-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.08fr 1.15fr;
+  gap: 48px;
+  align-items: center;
+}
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--cyan);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.eyebrow::before {
+  content: "❯";
+  color: var(--dim);
+}
+
+h1 {
+  margin-top: 16px;
+  font-size: clamp(30px, 4.2vw, 42px);
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+}
+
+.lede {
+  max-width: 48ch;
+  margin-top: 18px;
+  color: var(--muted);
+  font-size: 16.5px;
+}
+
+.lede strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 26px;
+}
+
+.install-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 10px 12px 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.install-inline code {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #cfe9f5;
+  font-size: 13.5px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+  padding: 0;
+  list-style: none;
+}
+
+.chips li {
+  padding: 4px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  color: var(--dim);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+/* --- terminal ----------------------------------------------------------- */
+
+.hero-term {
+  position: relative;
+}
+
+.hero-term::before {
+  content: "";
+  position: absolute;
+  inset: -34px -24px;
+  background: radial-gradient(420px 220px at 62% 8%, rgba(34, 211, 238, 0.13), transparent 72%);
+  filter: blur(8px);
+  pointer-events: none;
+}
+
+.term {
+  position: relative;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, #0c121b, #0a0f17);
+  box-shadow: 0 34px 80px -46px rgba(0, 0, 0, 1), 0 0 0 1px rgba(34, 211, 238, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.term-bar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-soft);
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  opacity: 0.9;
+}
+
+.dot-r {
+  background: #ff5f57;
+}
+
+.dot-y {
+  background: #febc2e;
+}
+
+.dot-g {
+  background: #28c840;
+}
+
+.term-title {
+  margin-left: 8px;
+  color: var(--dim);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.term-replay {
+  margin-left: auto;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 0.14s ease, border-color 0.14s ease;
+}
+
+.term-replay:hover {
+  border-color: rgba(34, 211, 238, 0.3);
+  color: var(--cyan);
+}
+
+.term-body {
+  margin: 0;
+  padding: 16px 18px 18px;
+  overflow-x: auto;
+  color: #c9d6e4;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.68;
+  white-space: normal; /* .tl re-enables pre for each line, so source layout is free */
+}
+
+/* one demo line: white-space:pre keeps its internal padding intact */
+.tl {
+  display: block;
+  white-space: pre;
+}
+
+.term-body.is-anim .tl {
+  opacity: 0;
+  transform: translateY(3px);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.term-body.is-anim .tl.is-in {
+  opacity: 1;
+  transform: none;
+}
+
+.cursor {
+  display: inline-block;
+  width: 8px;
+  height: 1.02em;
+  margin-left: 2px;
+  background: var(--cyan);
+  vertical-align: -0.14em;
+  animation: blink 1.05s steps(1) infinite;
+}
+
+@keyframes blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.term-caption {
+  max-width: 52ch;
+  margin: 16px auto 0;
+  color: var(--dim);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* demo colors */
+.c-dim {
+  color: var(--dim);
+}
+
+.c-hop {
+  color: #5d718c;
+}
+
+.c-cmd {
+  color: var(--cyan);
+  font-weight: 600;
+}
+
+.c-title {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.c-hint {
+  color: var(--dim);
+}
+
+.c-changed,
+.c-warn,
+.c-amber {
+  color: var(--amber);
+}
+
+.c-cyan {
+  color: var(--cyan);
+}
+
+.c-magenta {
+  color: var(--magenta);
+}
+
+.c-ok,
+.c-green {
+  color: var(--green);
+}
+
+/* --- sections ----------------------------------------------------------- */
+
+.section {
+  padding: 76px 0;
+  border-top: 1px solid var(--border-soft);
+}
+
+.section-head {
+  max-width: 740px;
+  margin-bottom: 38px;
+}
+
+.num {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--dim);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.num::before {
+  content: "";
+  width: 26px;
+  height: 1px;
+  background: var(--border);
+}
+
+h2 {
+  margin-top: 12px;
+  font-size: clamp(24px, 3vw, 33px);
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+}
+
+.section-lede {
+  max-width: 64ch;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 16px;
+}
+
+.section-lede em {
+  color: var(--ink);
+  font-style: normal;
+  border-bottom: 1px dashed rgba(34, 211, 238, 0.4);
+}
+
+/* --- cards -------------------------------------------------------------- */
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 18px;
+}
+
+.grid-features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 18px;
+}
+
+.card {
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  transition: border-color 0.18s ease, transform 0.18s ease;
+}
+
+.card:hover {
+  border-color: #253347;
+  transform: translateY(-2px);
+}
+
+.card h3 {
+  font-size: 16px;
+  letter-spacing: -0.01em;
+}
+
+.card p {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 14.5px;
+}
+
+.punch {
+  max-width: 70ch;
+  margin-top: 28px;
+  color: var(--muted);
+  font-size: 17px;
+}
+
+.punch em {
+  color: var(--ink);
+  font-style: normal;
+  border-bottom: 1px dashed rgba(34, 211, 238, 0.4);
+}
+
+/* --- feature cards ------------------------------------------------------ */
+
+.icon {
+  display: block;
+  width: 22px;
+  height: 22px;
+  margin-bottom: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  color: var(--cyan);
+}
+
+.grid-features .card:nth-child(4n + 2) .icon {
+  color: var(--green);
+}
+
+.grid-features .card:nth-child(4n + 3) .icon {
+  color: var(--amber);
+}
+
+.grid-features .card:nth-child(4n + 4) .icon {
+  color: var(--magenta);
+}
+
+.snippet {
+  margin-top: 16px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: #aebfd2;
+  font-family: var(--font-mono);
+  font-size: 11.8px;
+  line-height: 1.7;
+  white-space: pre;
+}
+
+/* --- startup rules ------------------------------------------------------ */
+
+.split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 18px;
+}
+
+.rule-list {
+  margin: 14px 0 0;
+  padding-left: 20px;
+  color: var(--muted);
+  font-size: 14.5px;
+}
+
+.rule-list li + li {
+  margin-top: 6px;
+}
+
+.card p + p {
+  margin-top: 14px;
+}
+
+.note {
+  padding-left: 12px;
+  border-left: 2px solid var(--border);
+  color: var(--dim);
+  font-size: 13px;
+}
+
+/* --- ecosystem layers --------------------------------------------------- */
+
+.layers {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.layer {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.012);
+}
+
+.layer-name {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.layer-tools {
+  color: var(--dim);
+  font-size: 13.5px;
+  text-align: right;
+}
+
+.layer-hop {
+  border-color: rgba(34, 211, 238, 0.45);
+  background: linear-gradient(90deg, rgba(34, 211, 238, 0.1), rgba(34, 211, 238, 0.02));
+  box-shadow: 0 18px 44px -30px rgba(34, 211, 238, 0.55), 0 0 0 1px rgba(34, 211, 238, 0.08);
+}
+
+.layer-hop .layer-name {
+  color: var(--cyan);
+}
+
+.layer-hop .layer-tools {
+  color: #9fe9f6;
+}
+
+.layer-note {
+  max-width: 74ch;
+  margin-top: 14px;
+  color: var(--dim);
+  font-size: 13.5px;
+}
+
+/* --- comparison table --------------------------------------------------- */
+
+.table-wrap {
+  margin-top: 34px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+table.cmp {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.cmp thead th {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--dim);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.cmp tbody th {
+  padding: 14px 16px;
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 600;
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.cmp tbody td {
+  padding: 14px 16px;
+  border-top: 1px solid var(--border-soft);
+  color: var(--muted);
+  vertical-align: top;
+}
+
+.cmp tbody tr:hover {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+/* --- reach / limits ----------------------------------------------------- */
+
+.reach {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 18px;
+  margin-top: 22px;
+}
+
+.card ul {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 14.5px;
+}
+
+.card ul li + li {
+  margin-top: 6px;
+}
+
+.card-yes {
+  border-color: rgba(52, 211, 153, 0.35);
+}
+
+.card-yes h3::before {
+  content: "✓ ";
+  color: var(--green);
+}
+
+.card-no h3::before {
+  content: "→ ";
+  color: var(--dim);
+}
+
+.limits {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px 26px;
+  padding: 0;
+  list-style: none;
+}
+
+.limits li {
+  padding-left: 14px;
+  border-left: 2px solid var(--border);
+  color: var(--muted);
+  font-size: 14.5px;
+}
+
+.limits strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* --- install ------------------------------------------------------------ */
+
+.install-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+.cmd-card {
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0));
+}
+
+.cmd-label {
+  margin-bottom: 8px;
+  color: var(--dim);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.cmd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+
+.cmd code {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #cdeef8;
+  font-size: 14px;
+}
+
+.steps {
+  display: grid;
+  gap: 14px;
+  padding: 0;
+  list-style: none;
+}
+
+.steps li {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.012);
+}
+
+.step-num {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  border-radius: 8px;
+  background: rgba(34, 211, 238, 0.06);
+  color: var(--cyan);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.steps h3 {
+  font-size: 15px;
+}
+
+.steps p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 30px;
+}
+
+/* --- footer ------------------------------------------------------------- */
+
+.footer {
+  margin-top: 12px;
+  padding: 28px 0 44px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.footer-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.footer-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+
+.footer-note {
+  color: var(--dim);
+  font-size: 13px;
+}
+
+.footer-note a {
+  color: var(--muted);
+}
+
+.footer-note a:hover {
+  color: var(--cyan);
+}
+
+/* --- motion ------------------------------------------------------------- */
+
+/* .reveal only hides content once JS is confirmed (html.js), so the page
+   is fully readable without scripting. */
+html.js .reveal {
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+html.js .reveal.is-in {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  html.js .reveal,
+  .card,
+  .btn,
+  .tl {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+
+  .cursor {
+    animation: none;
+  }
+}
+
+/* --- responsive --------------------------------------------------------- */
+
+@media (min-width: 621px) {
+  .term-body {
+    min-height: 560px; /* 26 lines at 12px/1.68 — keeps the hero from jumping during the demo */
+  }
+}
+
+/* below this the two hero columns get too tight for the 62-char warning line */
+@media (max-width: 1040px) {
+  .hero-grid {
+    grid-template-columns: 1fr;
+    gap: 40px;
+  }
+
+  .hero {
+    padding-top: 48px;
+  }
+}
+
+@media (max-width: 960px) {
+
+  .layer {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .layer-tools {
+    text-align: left;
+  }
+}
+
+@media (max-width: 760px) {
+  .nav a:not(.ext) {
+    display: none;
+  }
+
+  .section {
+    padding: 56px 0;
+  }
+}
+
+@media (max-width: 420px) {
+  .term-body {
+    padding: 14px;
+    font-size: 11px;
+  }
+
+  .install-inline {
+    flex-wrap: wrap;
+  }
+}
