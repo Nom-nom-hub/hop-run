@@ -142,6 +142,50 @@ describe('runScripts', () => {
     await rm(root, { recursive: true, force: true });
   });
 
+  it('reports when a child has been spawned', async () => {
+    const capture = createCapture();
+    const spawned: string[] = [];
+    const spec: RunSpec = {
+      name: 'frontend',
+      dir: root,
+      script: 'cwd',
+      command: cwdCommand,
+    };
+
+    await runScripts([spec], {
+      stream: capture.stream,
+      registerSignalHandlers: false,
+      hooks: {
+        onSpawn(name, script): void {
+          spawned.push(`${name}:${script}`);
+        },
+      },
+    });
+
+    expect(spawned).toEqual(['frontend:cwd']);
+  });
+
+  it('stays quiet when the caller draws the outcome itself', async () => {
+    const capture = createCapture();
+    const spec: RunSpec = {
+      name: 'frontend',
+      dir: root,
+      script: 'cwd',
+      command: cwdCommand,
+    };
+
+    const { results } = await runScripts([spec], {
+      stream: capture.stream,
+      registerSignalHandlers: false,
+      quiet: true,
+    });
+
+    // The child still ran, and its own output is still streamed — only the
+    // per-script completion line is suppressed.
+    expect(results[0]).toMatchObject({ ok: true, code: 0 });
+    expect(capture.text()).not.toContain('[hop]');
+  });
+
   it('runs a command with the target directory as cwd and prefixes its output', async () => {
     const capture = createCapture();
     const spec: RunSpec = {

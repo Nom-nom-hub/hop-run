@@ -39,6 +39,8 @@ export const GLYPH = {
   warn: '⚠',
   info: 'ℹ',
   dot: '·',
+  /** A small separator. */
+  dotSmall: '·',
   /** A tree branch that is followed by more items. */
   branch: '├',
   /** The last item of a tree. */
@@ -49,6 +51,18 @@ export const GLYPH = {
   mark: '↗',
   /** A leading marker for a list entry. */
   bullet: '▸',
+  /** A selected checkbox. */
+  checked: '◉',
+  /** An unselected checkbox. */
+  unchecked: '○',
+  /** The cursor in the picker. */
+  cursor: '❯',
+  /** A filled status dot. */
+  status: '●',
+  /** An empty status dot. */
+  ring: '○',
+  /** The frames of the loading spinner. */
+  spinner: ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'],
 } as const;
 
 /** A small square used to tag the ecosystem of a project. */

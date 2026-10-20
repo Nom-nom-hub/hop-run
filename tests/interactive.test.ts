@@ -2,19 +2,21 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cancel, groupMultiselect } from '@clack/prompts';
 import { main } from '../src/index.js';
 import { changedFiles } from '../src/git.js';
-
-const { CANCEL_SYMBOL } = vi.hoisted(() => ({ CANCEL_SYMBOL: Symbol('clack:cancel') }));
-
-vi.mock('@clack/prompts', () => ({
-  groupMultiselect: vi.fn(async () => [0]),
-  intro: vi.fn(),
-  cancel: vi.fn(),
-  spinner: vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), clear: vi.fn() })),
-  isCancel: (value: unknown): value is symbol => value === CANCEL_SYMBOL,
-}));
+import {
+  allRows,
+  chosenScripts,
+  groupRows,
+  initialSelection,
+  moveCursor,
+  rowKey,
+  toggle,
+  toggleAll,
+  visibleRows,
+  type PickerProject,
+  type Selection,
+} from '../src/ui/picker-state.js';
 
 vi.mock('../src/git.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/git.js')>();
@@ -45,6 +47,93 @@ function captureOutput(): { text(): string; restore(): void } {
   };
 }
 
+const fixtureProjects: PickerProject[] = [
+  {
+    name: 'api',
+    type: 'node',
+    scripts: ['dev', 'build'],
+    commands: { dev: 'tsx watch src/index.ts', build: 'tsc' },
+  },
+  {
+    name: 'web',
+    type: 'node',
+    scripts: ['dev'],
+    commands: { dev: 'vite' },
+  },
+];
+
+describe('picker state', () => {
+  it('lists every script of every project', () => {
+    expect(allRows(fixtureProjects)).toEqual([
+      { projectIndex: 0, script: 'dev' },
+      { projectIndex: 0, script: 'build' },
+      { projectIndex: 1, script: 'dev' },
+    ]);
+  });
+
+  it('filters by project name and by script name', () => {
+    const rows = allRows(fixtureProjects);
+    expect(visibleRows(rows, fixtureProjects, 'web').map((row) => row.script)).toEqual(['dev']);
+    expect(visibleRows(rows, fixtureProjects, 'build').map((row) => row.script)).toEqual(['build']);
+    expect(visibleRows(rows, fixtureProjects, 'nope')).toEqual([]);
+  });
+
+  it('treats an empty filter as no filter', () => {
+    const rows = allRows(fixtureProjects);
+    expect(visibleRows(rows, fixtureProjects, '')).toHaveLength(3);
+    expect(visibleRows(rows, fixtureProjects, '   ')).toHaveLength(3);
+  });
+
+  it('groups the rows by project, in order', () => {
+    const groups = groupRows(allRows(fixtureProjects), fixtureProjects);
+    expect(groups.map((group) => group.project.name)).toEqual(['api', 'web']);
+    expect(groups[0]?.rows.map((row) => row.script)).toEqual(['dev', 'build']);
+  });
+
+  it('toggles a row on and off', () => {
+    let selection: Selection = new Set<string>();
+    selection = toggle(selection, 0, 'dev');
+    expect(selection.has(rowKey(0, 'dev'))).toBe(true);
+    selection = toggle(selection, 0, 'dev');
+    expect(selection.size).toBe(0);
+  });
+
+  it('toggles every visible row at once, then clears them', () => {
+    const rows = allRows(fixtureProjects);
+    const selected = toggleAll(new Set<string>(), rows);
+    expect(selected.size).toBe(3);
+    const cleared = toggleAll(selected, rows);
+    expect(cleared.size).toBe(0);
+  });
+
+  it('starts with the suggested scripts selected', () => {
+    const projects: PickerProject[] = [
+      { ...fixtureProjects[0]!, suggested: 'build' },
+      fixtureProjects[1]!,
+    ];
+    const selection = initialSelection(projects);
+    expect(selection.has(rowKey(0, 'build'))).toBe(true);
+    expect(selection.has(rowKey(0, 'dev'))).toBe(false);
+  });
+
+  it('reports the chosen scripts per project', () => {
+    const rows = allRows(fixtureProjects);
+    const selection = new Set([rowKey(0, 'dev'), rowKey(1, 'dev')]);
+    const chosen = chosenScripts(selection, rows, fixtureProjects);
+    expect(chosen.get('api')).toEqual(['dev']);
+    expect(chosen.get('web')).toEqual(['dev']);
+  });
+
+  it('keeps the cursor inside the visible rows', () => {
+    expect(moveCursor(0, 'up', 3)).toBe(0);
+    expect(moveCursor(2, 'down', 3)).toBe(2);
+    expect(moveCursor(1, 'down', 3)).toBe(2);
+    expect(moveCursor(1, 'first', 3)).toBe(0);
+    expect(moveCursor(1, 'last', 3)).toBe(2);
+    expect(moveCursor(1, 'last', 0)).toBe(0);
+  });
+});
+
 describe('interactive picker', () => {
   let cwd: string;
   let root: string;
@@ -67,7 +156,6 @@ describe('interactive picker', () => {
     );
     process.chdir(root);
     vi.clearAllMocks();
-    vi.mocked(groupMultiselect).mockImplementation(async () => [0]);
   });
 
   afterEach(async () => {
@@ -75,7 +163,7 @@ describe('interactive picker', () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it('runs the picked script and reports success', async () => {
+  it('lists the detected projects when there is no terminal to draw on', async () => {
     const capture = captureOutput();
     let code: number;
     try {
@@ -85,30 +173,15 @@ describe('interactive picker', () => {
     }
 
     expect(code).toBe(0);
-    expect(capture.text()).toContain('MENU_RAN');
-    expect(capture.text()).not.toContain('OTHER');
-    expect(cancel).not.toHaveBeenCalled();
+    const output = capture.text();
+    // The project is named after its directory, and the fixture's scripts
+    // are listed underneath it.
+    expect(output).toContain(path.basename(root));
+    expect(output).toContain('dev');
+    expect(output).toContain('other');
   });
 
-  it('treats ctrl+c at the menu as a cancel and starts nothing', async () => {
-    vi.mocked(groupMultiselect).mockResolvedValueOnce(CANCEL_SYMBOL as never);
-
-    const capture = captureOutput();
-    let code: number;
-    try {
-      code = await main([]);
-    } finally {
-      capture.restore();
-    }
-
-    expect(code).toBe(130);
-    expect(cancel).toHaveBeenCalledWith(expect.stringContaining('canceled'));
-    expect(capture.text()).not.toContain('MENU_RAN');
-  });
-
-  it('exits cleanly when nothing was selected', async () => {
-    vi.mocked(groupMultiselect).mockResolvedValueOnce([] as number[]);
-
+  it('points at the script argument when it cannot show a picker', async () => {
     const capture = captureOutput();
     let code: number;
     try {
@@ -118,11 +191,10 @@ describe('interactive picker', () => {
     }
 
     expect(code).toBe(0);
-    expect(cancel).toHaveBeenCalledWith(expect.stringContaining('nothing selected'));
-    expect(capture.text()).not.toContain('MENU_RAN');
+    expect(capture.text()).toContain('hop <script>');
   });
 
-  it('pre-selects the primary script of projects with uncommitted changes', async () => {
+  it('marks the projects with uncommitted changes', async () => {
     vi.mocked(changedFiles).mockReturnValueOnce([path.join(root, 'package.json')]);
 
     const capture = captureOutput();
@@ -134,29 +206,10 @@ describe('interactive picker', () => {
     }
 
     expect(code).toBe(0);
-    const call = vi.mocked(groupMultiselect).mock.calls[0]?.[0] as
-      | { initialValues?: number[]; options: Record<string, unknown> }
-      | undefined;
-    expect(call?.initialValues).toEqual([0]); // "dev" is the first script of the dirty target
-    expect(Object.keys(call?.options ?? {}).some((label) => label.includes('changed'))).toBe(true);
+    expect(capture.text()).toContain('changed');
   });
 
-  it('leaves the menu untouched when nothing is dirty', async () => {
-    const capture = captureOutput();
-    try {
-      await main([]);
-    } finally {
-      capture.restore();
-    }
-
-    const call = vi.mocked(groupMultiselect).mock.calls[0]?.[0] as
-      | { initialValues?: number[]; options: Record<string, unknown> }
-      | undefined;
-    expect(call?.initialValues).toEqual([]);
-    expect(Object.keys(call?.options ?? {}).some((label) => label.includes('changed'))).toBe(false);
-  });
-
-  it('releases stdin after the menu so hop can exit', async () => {
+  it('releases stdin so hop can exit', async () => {
     const pause = vi.spyOn(process.stdin, 'pause');
     const unref = typeof process.stdin.unref === 'function' ? vi.spyOn(process.stdin, 'unref') : undefined;
 

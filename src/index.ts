@@ -2,7 +2,7 @@
 import { readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { cancel, groupMultiselect, intro, isCancel, spinner } from '@clack/prompts';
+import React from 'react';
 import { Command, CommanderError } from 'commander';
 import pc from 'picocolors';
 import { changedFiles, dirtyFileCounts, primaryScript } from './git.js';
@@ -22,6 +22,11 @@ import {
   wordmark,
   type Style,
 } from './theme.js';
+import { App } from './ui/App.js';
+import { isInteractive, mount, renderOnce } from './ui/render.js';
+import { Help, ListScreen } from './ui/Screens.js';
+import type { PickerProject } from './ui/Picker.js';
+import { createRunController } from './ui/controller.js';
 import { availableScripts, DEFAULT_MAX_DEPTH, filterByScript, scan, type ProjectTarget } from './scanner.js';
 import {
   colorForTarget,
@@ -188,39 +193,19 @@ function dependencyList(gate: DependencyGate): string {
 
 interface RunUi {
   hooks: RunHooks;
-  /** stdout wrapper that keeps child output from fighting the spinner. */
+  /** stdout wrapper for the child output. */
   stream: Pick<NodeJS.WriteStream, 'write'>;
 }
 
 /**
- * Builds the handshake UI: an animated clack spinner while a dependency comes
- * up, downgraded to plain `[hop]` lines as soon as anything else writes to the
- * terminal (child output, notices, a second wait).
+ * Builds the handshake UI for the plain (non-TTY) path: a `[hop]` line for
+ * every port swap and dependency wait.
  */
 function createRunUi(): RunUi {
-  const spin = process.stdout.isTTY === true ? spinner() : null;
   const waitStartedAt = new WeakMap<DependencyGate, number>();
-  let spinOwner: DependencyGate | null = null;
-
-  const haltSpinner = (): void => {
-    if (spinOwner !== null) {
-      spin?.clear(); // erase the animated line without leaving residue
-      spinOwner = null;
-    }
-  };
 
   const note = (message: string): void => {
-    haltSpinner();
     log(message);
-  };
-
-  const settle = (gate: DependencyGate, message: string): void => {
-    if (spinOwner === gate) {
-      spinOwner = null;
-      spin?.stop(message);
-      return;
-    }
-    note(message);
   };
 
   const hooks: RunHooks = {
@@ -234,35 +219,29 @@ function createRunUi(): RunUi {
       waitStartedAt.set(gate, Date.now());
       const wanted = dependencyList(gate);
       const suffix = STYLE.muted(`before starting ${gate.name}`);
-      // Only animate while hop is the only thing writing to the terminal.
-      if (spin !== null && spinOwner === null && gate.running === 0) {
-        spinOwner = gate;
-        spin.start(`waiting for ${wanted} ${suffix}`);
-        return;
-      }
       note(`waiting for ${wanted} ${suffix}`);
     },
     onWaitEnd(gate, outcome): void {
       const wanted = dependencyList(gate);
       const elapsed = formatDuration(Date.now() - (waitStartedAt.get(gate) ?? Date.now()));
       if (outcome === 'ready') {
-        settle(gate, `${STYLE.ok(GLYPH.ok)} ${wanted} ${STYLE.muted(`is up ${GLYPH.dot} ${elapsed} ${GLYPH.dot} starting ${gate.name}`)}`);
+        note(
+          `${STYLE.ok(GLYPH.ok)} ${wanted} ${STYLE.muted(`is up ${GLYPH.dot} ${elapsed} ${GLYPH.dot} starting ${gate.name}`)}`,
+        );
         return;
       }
       if (outcome === 'timeout') {
-        settle(
-          gate,
+        note(
           `${STYLE.warn(GLYPH.warn)} ${wanted} ${STYLE.muted(`not answering after ${elapsed} ${GLYPH.dot} starting ${gate.name} anyway`)}`,
         );
         return;
       }
-      haltSpinner(); // aborted (Ctrl+C): the interrupt banner is printed by the executor
+      // aborted (Ctrl+C): the interrupt banner is printed by the executor
     },
   };
 
   const stream: RunUi['stream'] = {
     write(text: string): boolean {
-      haltSpinner();
       return process.stdout.write(text);
     },
   };
@@ -361,9 +340,16 @@ interface RunOptions {
 }
 
 async function execute(specs: RunSpec[], options: RunOptions): Promise<number> {
-  printRunHeader(specs);
-
   const startedAt = Date.now();
+
+  // With a terminal, the run is a live board: one row per project, updated
+  // in place, with the child output underneath. Without one, the output is
+  // a plain, line-oriented log.
+  if (isInteractive()) {
+    return executeWithInterface(specs, options, startedAt);
+  }
+
+  printRunHeader(specs);
   const ui = createRunUi();
   const { results, interrupted } = await runScripts(specs, {
     stream: ui.stream,
@@ -379,6 +365,118 @@ async function execute(specs: RunSpec[], options: RunOptions): Promise<number> {
   }
 
   return printSummary(results, totalMs);
+}
+
+/**
+ * Runs the scripts with the Ink interface up.
+ *
+ * The executor writes its child output into the controller, which the board
+ * renders; when everything has settled, the summary replaces the board.
+ */
+async function executeWithInterface(
+  specs: RunSpec[],
+  options: RunOptions,
+  startedAt: number,
+): Promise<number> {
+  const controller = createRunController();
+
+  // Register the rows first, so the board has something to draw.
+  for (const spec of specs) {
+    controller.startRow(spec.name, spec.script, spec.command);
+    controller.updateRow(spec.name, spec.script, { phase: 'starting' });
+  }
+
+  const instance = mount(
+    React.createElement(App, {
+      view: 'running',
+      projects: [],
+      controller,
+      onPick: () => undefined,
+      onCancel: () => undefined,
+    }),
+  );
+
+  const stream: Pick<NodeJS.WriteStream, 'write'> = {
+    write(text: string): boolean {
+      for (const line of text.split('\n')) {
+        if (line.trim() !== '') {
+          // The executor colours its tag; the board draws its own, so the
+          // escape codes are stripped here.
+          controller.addLog(line.replace(/\u001b\[[0-9;]*m/g, ''));
+        }
+      }
+      return true;
+    },
+  };
+
+  const hooks = createInterfaceHooks(controller);
+
+  let summary;
+  let interrupted = false;
+  try {
+    const outcome = await runScripts(specs, {
+      stream,
+      hooks,
+      waitForDependencies: options.waitForDependencies,
+      // The board shows the outcome of every script itself.
+      quiet: true,
+    });
+    interrupted = outcome.interrupted;
+    for (const result of outcome.results) {
+      controller.finishRow(result);
+    }
+    summary = outcome.results.map((result) => ({
+      name: result.name,
+      script: result.script,
+      ok: result.ok,
+      reason:
+        result.error ??
+        (result.ok ? undefined : result.signal !== null ? `signal ${result.signal}` : `exit ${String(result.code)}`),
+      durationMs: result.durationMs,
+    }));
+    controller.finish(Date.now() - startedAt);
+    // Give React a frame to paint the finished board before it is torn down.
+    await new Promise((resolve) => setTimeout(resolve, 60));
+  } finally {
+    // The board is replaced by the summary, so it is unmounted before the
+    // summary is drawn.
+    instance.unmount();
+    releaseStdin();
+  }
+
+  const totalMs = Date.now() - startedAt;
+
+  if (interrupted) {
+    console.log();
+    console.log(`  ${STYLE.warn(GLYPH.warn)} stopped by signal ${STYLE.muted(`${GLYPH.dot} all child processes terminated`)}`);
+    return 130;
+  }
+
+  // The board already drew the summary, so the plain one is not repeated.
+  const failed = (summary ?? []).filter((row) => !row.ok).length;
+  return failed === 0 ? 0 : 1;
+}
+
+/** Feeds the executor's events into the board. */
+function createInterfaceHooks(controller: ReturnType<typeof createRunController>): RunHooks {
+  return {
+    onPortRedirect({ name, script, from, to }): void {
+      controller.updateRow(name, script, { port: to });
+      controller.addLog(`${GLYPH.warn} port ${from} was blocked · ${name} moved to ${to}`);
+    },
+    onWaitStart(gate): void {
+      const wanted = gate.dependencies.map((dependency) => `${dependency.name} :${dependency.port}`).join(' · ');
+      controller.updateRow(gate.name, gate.script, { phase: 'waiting', waitingFor: wanted });
+    },
+    onWaitEnd(gate, outcome): void {
+      if (outcome === 'ready' || outcome === 'timeout') {
+        controller.updateRow(gate.name, gate.script, { phase: 'starting', waitingFor: undefined });
+      }
+    },
+    onSpawn(name, script): void {
+      controller.updateRow(name, script, { phase: 'running' });
+    },
+  };
 }
 
 async function runDirect(root: string, targets: ProjectTarget[], script: string, options: RunOptions): Promise<number> {
@@ -422,67 +520,120 @@ async function runInteractive(root: string, targets: ProjectTarget[], options: R
   // Uncommitted files tell hop what the developer is working on right now.
   const dirtyCounts = dirtyFileCounts(targets, changedFiles(root));
 
-  const entries: RunSpec[] = [];
-  const groups: Record<string, Array<{ value: number; label: string; hint: string }>> = {};
-  const initialValues: number[] = [];
-  const width = terminalWidth();
-
-  targets.forEach((target, targetIndex) => {
-    const color = targetColor(targetIndex);
+  const projects: PickerProject[] = targets.map((target) => {
     const dirty = dirtyCounts.get(target.name);
-    const preselected = dirty === undefined ? undefined : primaryScript(target);
-    const typeStyle = styleForType(target.type);
+    const suggested = dirty === undefined ? undefined : primaryScript(target);
+    return {
+      name: target.name,
+      type: target.type,
+      scripts: Object.keys(target.scripts),
+      commands: Object.fromEntries(
+        Object.keys(target.scripts).map((script) => [script, resolveCommand(target, script, options.npmMode)]),
+      ),
+      ...(dirty !== undefined ? { changed: dirty } : {}),
+      ...(suggested !== undefined ? { suggested } : {}),
+    };
+  });
 
-    // The heading carries the project's identity, its ecosystem and — when
-    // there is one — how much work is waiting in the working tree.
-    const parts = [color(target.name), `${typeStyle(CHIP)} ${STYLE.muted(target.type)}`];
-    if (dirty !== undefined) {
-      parts.push(`${STYLE.muted(GLYPH.dot)} ${STYLE.warn(`${dirty} changed`)}`);
-    }
-    const heading = parts.join(' ');
+  // Without a terminal there is nothing to press keys on, so hop falls back
+  // to a plain prompt that names the script to run.
+  if (!isInteractive()) {
+    return runInteractivePlain(root, targets, projects, options);
+  }
 
-    groups[heading] = Object.keys(target.scripts).map((script) => {
-      const spec = specFor(target, script, options.npmMode, color);
-      entries.push(spec);
-      const value = entries.length - 1;
-      if (script === preselected) {
-        initialValues.push(value);
+  const specs = await pickWithInterface(projects, targets, options);
+  if (specs === null) {
+    return 130; // cancelled with Escape or Ctrl+C
+  }
+  if (specs.length === 0) {
+    log('nothing selected');
+    return 0;
+  }
+
+  return execute(specs, options);
+}
+
+/**
+ * Runs the scripts through the Ink interface.
+ *
+ * Returns the specs to run, or `null` when the user cancelled.
+ */
+async function pickWithInterface(
+  projects: PickerProject[],
+  targets: ProjectTarget[],
+  options: RunOptions,
+): Promise<RunSpec[] | null> {
+  let resolvePick: ((specs: RunSpec[] | null) => void) | null = null;
+  const picked = new Promise<RunSpec[] | null>((resolve) => {
+    resolvePick = resolve;
+  });
+
+  const onPick = (chosen: Map<string, string[]>): void => {
+    const specs: RunSpec[] = [];
+    targets.forEach((target, index) => {
+      const scripts = chosen.get(target.name) ?? [];
+      for (const script of scripts) {
+        specs.push(specFor(target, script, options.npmMode, targetColor(index)));
       }
-      return {
-        value,
-        label: STYLE.brand(script),
-        hint: truncate(spec.command, Math.max(24, width - 36)),
-      };
     });
-  });
+    resolvePick?.(specs);
+  };
 
-  intro(wordmark(`${STYLE.muted(plural(targets.length, 'project'))} ${STYLE.muted('detected')}`));
+  const onCancel = (): void => {
+    resolvePick?.(null);
+  };
 
-  const picked = await groupMultiselect<number>({
-    message: 'Select scripts to run',
-    options: groups,
-    initialValues,
-    required: false,
-  });
+  const instance = mount(
+    React.createElement(App, { view: 'picker', projects, onPick, onCancel }),
+  );
 
   try {
-    if (isCancel(picked)) {
-      cancel('canceled — nothing was started');
-      return 130; // cancelled with Ctrl+C
-    }
-    if (picked.length === 0) {
-      cancel('nothing selected');
-      return 0;
-    }
-
-    const specs = picked
-      .map((index) => entries[index])
-      .filter((spec): spec is RunSpec => spec !== undefined);
-
-    return await execute(specs, options);
+    return await picked;
   } finally {
+    instance.unmount();
     releaseStdin();
   }
+}
+
+/**
+ * The fallback picker for pipes, files and CI logs: name the script and hop
+ * runs every project that has it.
+ */
+async function runInteractivePlain(
+  root: string,
+  targets: ProjectTarget[],
+  projects: PickerProject[],
+  options: RunOptions,
+): Promise<number> {
+  const names = availableScripts(targets);
+  const scriptWidth = widest(projects.flatMap((project) => project.scripts));
+
+  console.log();
+  console.log(`  ${wordmark(`${STYLE.muted(plural(targets.length, 'project'))} ${STYLE.muted('detected')}`)}`);
+  console.log();
+  console.log(`  ${STYLE.muted('scripts')}  ${names.map((name) => STYLE.brand(name)).join(STYLE.muted(` ${GLYPH.dot} `))}`);
+  console.log();
+  for (const project of projects) {
+    const typeStyle = styleForType(project.type);
+    const changed = project.changed;
+    const meta = [`${typeStyle(CHIP)} ${STYLE.muted(project.type)}`];
+    if (changed !== undefined) {
+      meta.push(STYLE.warn(`${changed} changed`));
+    }
+    console.log(`  ${STYLE.brand(project.name)} ${STYLE.muted(GLYPH.dot)} ${meta.join(STYLE.muted(` ${GLYPH.dot} `))}`);
+    for (const script of project.scripts) {
+      const suggested = project.suggested === script;
+      const mark = suggested ? STYLE.ok(GLYPH.ok) : STYLE.muted(GLYPH.branch);
+      console.log(
+        `    ${mark} ${STYLE.brand(padTo(script, scriptWidth))} ${STYLE.muted(project.commands[script] ?? '')}`,
+      );
+    }
+    console.log();
+  }
+  console.log(`  ${STYLE.muted('run a script with')} ${STYLE.strong('hop <script>')}`);
+  console.log();
+  releaseStdin();
+  return 0;
 }
 
 /**
@@ -553,7 +704,11 @@ export async function main(argv: string[]): Promise<number> {
 
   const options = program.opts<{ npm?: boolean; list?: boolean; help?: boolean; wait?: boolean }>();
   if (options.help === true) {
-    console.log(HELP);
+    if (isInteractive()) {
+      await renderOnce(React.createElement(Help, { maxDepth: DEFAULT_MAX_DEPTH }));
+    } else {
+      console.log(HELP);
+    }
     return 0;
   }
 
@@ -567,6 +722,23 @@ export async function main(argv: string[]): Promise<number> {
   if (options.list === true) {
     if (targets.length === 0) {
       printNothingFound(root, 'no runnable project found');
+      return 0;
+    }
+    if (isInteractive()) {
+      await renderOnce(
+        React.createElement(ListScreen, {
+          root,
+          projects: targets.map((target) => ({
+            name: target.name,
+            type: target.type,
+            path: relativeLabel(root, target.path),
+            scripts: Object.fromEntries(
+              Object.keys(target.scripts).map((script) => [script, resolveCommand(target, script, runOptions.npmMode)]),
+            ),
+          })),
+          npmMode: runOptions.npmMode,
+        }),
+      );
       return 0;
     }
     const names = availableScripts(targets).map((name) => STYLE.brand(name)).join(STYLE.muted(` ${GLYPH.dot} `));

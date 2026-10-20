@@ -104,6 +104,8 @@ export interface RunHooks {
   onPortRedirect?(redirect: PortRedirect): void;
   onWaitStart?(gate: DependencyGate): void;
   onWaitEnd?(gate: DependencyGate, outcome: WaitOutcome): void;
+  /** Fired once a child has actually been spawned. */
+  onSpawn?(name: string, script: string): void;
 }
 
 export interface ExecutorOptions {
@@ -123,6 +125,13 @@ export interface ExecutorOptions {
   healthTimeoutMs?: number;
   /** Delay between health probes. Default 250 ms. */
   healthIntervalMs?: number;
+  /**
+   * Suppress the per-script completion lines.
+   *
+   * The live board shows the outcome of every script itself, so the
+   * executor's own line would be a duplicate.
+   */
+  quiet?: boolean;
 }
 
 /**
@@ -540,14 +549,20 @@ export async function runScripts(specs: RunSpec[], options: ExecutorOptions = {}
         const label = `${color(spec.name)} ${STYLE.strong(spec.script)}`;
         if (error !== undefined) {
           result.error = error;
-          write(`${PREFIX} ${STYLE.fail(GLYPH.fail)} ${label} ${STYLE.muted(GLYPH.dot)} ${STYLE.fail(`failed to start: ${error}`)}\n`);
+          if (!options.quiet) {
+            write(`${PREFIX} ${STYLE.fail(GLYPH.fail)} ${label} ${STYLE.muted(GLYPH.dot)} ${STYLE.fail(`failed to start: ${error}`)}\n`);
+          }
         } else if (code === 0) {
-          write(`${PREFIX} ${STYLE.ok(GLYPH.ok)} ${label} ${STYLE.muted(`· ${formatDuration(durationMs)}`)}\n`);
+          if (!options.quiet) {
+            write(`${PREFIX} ${STYLE.ok(GLYPH.ok)} ${label} ${STYLE.muted(`· ${formatDuration(durationMs)}`)}\n`);
+          }
         } else {
           const reason = signal !== null ? `signal ${signal}` : `exit ${String(code)}`;
-          write(
-            `${PREFIX} ${STYLE.fail(GLYPH.fail)} ${label} ${STYLE.muted(GLYPH.dot)} ${STYLE.fail(reason)} ${STYLE.muted(`· ${formatDuration(durationMs)}`)}\n`,
-          );
+          if (!options.quiet) {
+            write(
+              `${PREFIX} ${STYLE.fail(GLYPH.fail)} ${label} ${STYLE.muted(GLYPH.dot)} ${STYLE.fail(reason)} ${STYLE.muted(`· ${formatDuration(durationMs)}`)}\n`,
+            );
+          }
         }
         resolve(result);
       };
@@ -568,6 +583,7 @@ export async function runScripts(specs: RunSpec[], options: ExecutorOptions = {}
       }
 
       children.add(child);
+      hooks?.onSpawn?.(spec.name, spec.script);
       child.stdout?.setEncoding('utf8');
       child.stdout?.on('data', (chunk: string) => outSplit.push(chunk));
       child.stderr?.setEncoding('utf8');

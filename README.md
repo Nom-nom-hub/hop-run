@@ -23,30 +23,36 @@ Then, from the repo root:
 
 ```text
 $ hop
-┌  ↗ hop · 3 projects detected
-│
-◆  Select scripts to run
-│  ◻ backend
-│  │ ◼ dev        (node -e "console.log('api listening on :8080')")
-│  └ ◻ start
-│  ◻ database
-│  │ ◼ up
-│  └ ◻ down
-│  ◻ frontend · 2 changed
-│  │ ◼ dev
-│  └ ◻ build
-│  ↑/↓ to navigate • Space: select • Enter: confirm
-└
+  ↗ hop · 3 projects detected
 
-  ▸ backend   dev  node -e "console.log('api listening on :8080')"
-  ▸ database  up   docker compose up
-  ▸ frontend  dev  node -e "console.log('ready on http://localhost:3000')"
+  backend · node
+  ❯ ◉ dev   node -e "console.log('api listening on :8080')"
+    ○ start node dist/index.js
 
-[backend ] api listening on :8080
-[database] [+] Running 2/2
-[hop] ✔ backend dev · 143ms
-[hop] ✔ database up · 2.4s
-[frontend] ready on http://localhost:3000
+  database · docker
+    ◉ up     docker compose up
+    ○ down   docker compose down
+
+  frontend · node · 2 changed
+    ◉ dev   vite
+    ○ build vite build
+
+  ↑/↓ move· space select· a all· / filter· enter run· esc cancel· 3 selected
+```
+
+Press <kbd>space</kbd> to pick scripts, <kbd>/</kbd> to filter and
+<kbd>enter</kbd> to run. The run itself is a live board — one row per
+project, updated in place:
+
+```text
+  ↗ hop · 2 of 3 projects · running
+
+  ● backend  dev   running
+  ● database up    waiting for database :5432
+  ● frontend dev   running
+
+  [backend] api listening on :8080
+  [frontend] ready on http://localhost:3000
 
   ✔ 3/3 scripts succeeded · 2.6s
 ```
@@ -211,14 +217,24 @@ Project layout:
 
 ```text
 src/
-├── index.ts     # entry point, commander parsing, clack picker, output styling
+├── index.ts     # entry point, commander parsing, output styling
 ├── theme.ts     # the visual language: styles, glyphs, width-aware layout
 ├── scanner.ts   # directory crawl + fingerprinting (ProjectTarget[])
 ├── executor.ts  # concurrent child processes + prefixed output + kill logic
 ├── ports.ts     # port probing, conflict resolution, PORT/--port/.env parsing
 ├── health.ts    # TCP health checks + dependency discovery (env/compose/scripts)
 ├── json.ts      # JSON parsing that tolerates a UTF-8 byte order mark
-└── git.ts       # `git status --porcelain` → absolute paths → dirty targets
+├── git.ts       # `git status --porcelain` → absolute paths → dirty targets
+└── ui/          # the Ink interface
+    ├── App.tsx        # the shell: picker, run board, summary
+    ├── Picker.tsx     # the script picker
+    ├── picker-state.ts  # its logic, kept pure so it can be tested
+    ├── RunBoard.tsx   # the live board of running projects
+    ├── Summary.tsx    # the closing summary
+    ├── Screens.tsx    # the help and project list
+    ├── controller.ts  # the store between the executor and React
+    ├── palette.ts     # colours and roles
+    └── render.tsx     # mounting, and the terminal check
 tests/
 ├── scanner.test.ts
 ├── executor.test.ts
@@ -226,18 +242,27 @@ tests/
 ├── health.test.ts
 ├── git.test.ts
 ├── theme.test.ts
+├── ui.test.ts
 ├── cli.test.ts
 └── interactive.test.ts
 ```
 
-Runtime dependencies stay deliberately small: `picocolors` for color,
-`@clack/prompts` for the picker and `commander` for flag parsing — process
-handling is plain `node:child_process`.
+The interface is built with [Ink](https://github.com/vadimdemedes/ink), so
+it is React: `ink` and `react` draw it, `picocolors` styles the plain-text
+fallback and `commander` parses the flags. Process handling stays plain
+`node:child_process`.
+
+When the output is not a terminal — a pipe, a file, a CI log — hop cannot
+draw an interface, so it falls back to plain, line-oriented text. The
+behaviour is the same; only the presentation changes.
 
 ## Known limits
 
 - Child stdio is piped for prefixing, so fully interactive programs run through
   `hop` (e.g. `npm init`) may not receive a TTY on stdin.
+- The interface needs a real terminal. Piped output, files and CI logs get the
+  plain-text version instead, and `hop` without a script prints the project
+  list rather than opening a picker.
 - Symlinked directories are not followed (avoids cycles).
 - No workspace-manager awareness (pnpm/turbo/nx); hop goes by fingerprints on
   disk only.

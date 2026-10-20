@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A bespoke Ink interface.** The picker and the run view are now drawn with
+  [Ink](https://github.com/vadimdemedes/ink) and React:
+  - the picker is hop's own: arrow keys move, space selects, `a` takes
+    everything, `/` filters by project or script, enter runs and escape
+    cancels;
+  - the run is a live board — one row per project, updated in place, showing
+    whether it is waiting, starting or running, which port it ended up on
+    and how long it took;
+  - the help screen and the project list share the picker's typography.
+
 ### Changed
 
 - **A new look for the whole CLI.** The visual language now lives in one
@@ -21,6 +33,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     that it found nothing;
   - column widths are measured in *visible* characters, so the alignment no
     longer depends on the terminal having colour support.
+- The output is unchanged when it is not a terminal: pipes, files and CI logs
+  get the plain, line-oriented version.
+
+### Removed
+
+- The `@clack/prompts` dependency. The picker it provided is replaced by
+  hop's own.
 
 ## [0.1.1] - 2026-10-20
 
