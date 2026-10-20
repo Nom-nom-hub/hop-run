@@ -1,4 +1,4 @@
-import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -159,5 +159,73 @@ describe('main --help', () => {
     });
     expect(descriptionColumns.every((column) => column > 0)).toBe(true);
     expect(new Set(descriptionColumns).size).toBe(1);
+  });
+
+  it('opens with the hop wordmark and separates its sections with a rule', async () => {
+    const capture = captureOutput();
+    let code: number;
+    try {
+      code = await main(['--help']);
+    } finally {
+      capture.restore();
+    }
+
+    const output = capture.text();
+    expect(code).toBe(0);
+    expect(output).toContain('↗ hop');
+    // Every section title is followed by a horizontal rule.
+    for (const title of ['Usage', 'Detection', 'Smart startup']) {
+      const lines = output.split('\n');
+      const index = lines.findIndex((line) => line === title);
+      expect(index).toBeGreaterThan(-1);
+      expect(lines[index + 1]).toMatch(/^─+$/);
+    }
+  });
+});
+
+describe('main --list', () => {
+  let cwd: string;
+  let root: string;
+
+  beforeEach(async () => {
+    cwd = process.cwd();
+    root = await mkdtemp(path.join(tmpdir(), 'hop-list-'));
+    await writeFile(
+      path.join(root, 'frontend', 'package.json'),
+      JSON.stringify({ name: 'frontend', scripts: { dev: 'vite', build: 'vite build' } }),
+      'utf8',
+    ).catch(async () => {
+      await mkdir(path.join(root, 'frontend'), { recursive: true });
+      await writeFile(
+        path.join(root, 'frontend', 'package.json'),
+        JSON.stringify({ name: 'frontend', scripts: { dev: 'vite', build: 'vite build' } }),
+        'utf8',
+      );
+    });
+    process.chdir(root);
+  });
+
+  afterEach(async () => {
+    process.chdir(cwd);
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it('draws the projects as a tree with the ecosystem and the path', async () => {
+    const capture = captureOutput();
+    let code: number;
+    try {
+      code = await main(['--list']);
+    } finally {
+      capture.restore();
+    }
+
+    const output = capture.text();
+    expect(code).toBe(0);
+    expect(output).toContain('↗ hop');
+    expect(output).toContain('frontend');
+    expect(output).toContain('node');
+    // The scripts hang under the project as a tree.
+    expect(output).toMatch(/├\s+dev/);
+    expect(output).toMatch(/└\s+build/);
   });
 });

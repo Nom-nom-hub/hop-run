@@ -23,7 +23,7 @@ Then, from the repo root:
 
 ```text
 $ hop
-┌  hop · 3 projects detected
+┌  ↗ hop · 3 projects detected
 │
 ◆  Select scripts to run
 │  ◻ backend
@@ -38,9 +38,9 @@ $ hop
 │  ↑/↓ to navigate • Space: select • Enter: confirm
 └
 
-  backend   dev  node -e "console.log('api listening on :8080')"
-  database  up   docker compose up
-  frontend  dev  node -e "console.log('ready on http://localhost:3000')"
+  ▸ backend   dev  node -e "console.log('api listening on :8080')"
+  ▸ database  up   docker compose up
+  ▸ frontend  dev  node -e "console.log('ready on http://localhost:3000')"
 
 [backend ] api listening on :8080
 [database] [+] Running 2/2
@@ -212,10 +212,12 @@ Project layout:
 ```text
 src/
 ├── index.ts     # entry point, commander parsing, clack picker, output styling
+├── theme.ts     # the visual language: styles, glyphs, width-aware layout
 ├── scanner.ts   # directory crawl + fingerprinting (ProjectTarget[])
 ├── executor.ts  # concurrent child processes + prefixed output + kill logic
 ├── ports.ts     # port probing, conflict resolution, PORT/--port/.env parsing
 ├── health.ts    # TCP health checks + dependency discovery (env/compose/scripts)
+├── json.ts      # JSON parsing that tolerates a UTF-8 byte order mark
 └── git.ts       # `git status --porcelain` → absolute paths → dirty targets
 tests/
 ├── scanner.test.ts
@@ -223,6 +225,7 @@ tests/
 ├── ports.test.ts
 ├── health.test.ts
 ├── git.test.ts
+├── theme.test.ts
 ├── cli.test.ts
 └── interactive.test.ts
 ```

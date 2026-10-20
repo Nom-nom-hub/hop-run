@@ -7,6 +7,21 @@ import { Command, CommanderError } from 'commander';
 import pc from 'picocolors';
 import { changedFiles, dirtyFileCounts, primaryScript } from './git.js';
 import { parseJsonText } from './json.js';
+import {
+  branch,
+  CHIP,
+  GLYPH,
+  padTo,
+  rule,
+  section,
+  STYLE,
+  styleForType,
+  truncate,
+  visibleLength,
+  widest,
+  wordmark,
+  type Style,
+} from './theme.js';
 import { availableScripts, DEFAULT_MAX_DEPTH, filterByScript, scan, type ProjectTarget } from './scanner.js';
 import {
   colorForTarget,
@@ -23,8 +38,7 @@ import {
 
 export { scan, filterByScript, runScripts };
 
-const GLYPH = { ok: '✔', fail: '✖', warn: '⚠', dot: '·' } as const;
-const PREFIX = pc.dim('[hop]');
+const PREFIX = STYLE.muted('[hop]');
 const CONTINUATION = '      '; // aligns with "[hop] "
 
 const VERSION: string = (() => {
@@ -38,15 +52,27 @@ const VERSION: string = (() => {
 
 /** Lays out `label → description` rows in two aligned columns. */
 function helpRows(rows: Array<[string, string]>, gap = 2): string {
-  const width = rows.reduce((max, [label]) => Math.max(max, label.length), 0);
-  return rows.map(([label, description]) => `  ${label.padEnd(width + gap)}${description}`).join('\n');
+  const width = widest(rows.map(([label]) => label));
+  return rows.map(([label, description]) => `  ${padTo(label, width + gap)}${description}`).join('\n');
+}
+
+/** Lays out `kind · fingerprint → description` rows in three aligned columns. */
+function helpRows3(rows: Array<[string, string, string]>, gap = 2): string {
+  const kindWidth = widest(rows.map(([kind]) => kind));
+  const fingerprintWidth = widest(rows.map(([, fingerprint]) => fingerprint));
+  return rows
+    .map(
+      ([kind, fingerprint, description]) =>
+        `  ${padTo(kind, kindWidth + 1)}${padTo(fingerprint, fingerprintWidth + gap)}${description}`,
+    )
+    .join('\n');
 }
 
 const USAGE_ROWS: Array<[string, string]> = [
-  ['hop', `Pick scripts interactively ${pc.dim('(space toggle · enter run)')}`],
-  ['hop <script>', `Run every matching script everywhere ${pc.dim('(e.g. hop dev)')}`],
-  ['hop <script> --npm', `Node scripts via their package manager ${pc.dim('(pre/post hooks run)')}`],
-  ['hop <script> --no-wait', `Start everything at once ${pc.dim('(skip dependency waits)')}`],
+  ['hop', `Pick scripts interactively ${STYLE.muted('(space toggle · enter run)')}`],
+  ['hop <script>', `Run every matching script everywhere ${STYLE.muted('(e.g. hop dev)')}`],
+  ['hop <script> --npm', `Node scripts via their package manager ${STYLE.muted('(pre/post hooks run)')}`],
+  ['hop <script> --no-wait', `Start everything at once ${STYLE.muted('(skip dependency waits)')}`],
   ['hop --list, -l', 'List detected projects and their scripts'],
   ['hop --help, -h', 'Show this help'],
   ['hop --version, -v', 'Print the version'],
@@ -60,30 +86,33 @@ const DETECTION_ROWS: Array<[string, string, string]> = [
 ];
 
 const HELP = [
-  `${pc.bold('hop')} ${pc.dim('— zero-config project runner')}`,
+  wordmark(STYLE.muted('zero-config project runner')),
   '',
-  pc.bold('Usage'),
-  helpRows(USAGE_ROWS.map(([label, description]) => [pc.cyan(label), description])),
+  section('Usage', 46),
+  helpRows(USAGE_ROWS.map(([label, description]) => [STYLE.brand(label), description])),
   '',
-  pc.bold('Detection'),
-  `  Scans the current directory and up to ${DEFAULT_MAX_DEPTH} levels below it, skipping`,
+  section('Detection', 46),
+  `  Scans the current directory and up to ${STYLE.strong(String(DEFAULT_MAX_DEPTH))} levels below it, skipping`,
   `  node_modules, .git, dist, build, venv and dot-directories.`,
   '',
-  helpRows(
+  helpRows3(
     DETECTION_ROWS.map(
-      ([kind, fingerprint, description]): [string, string] => [pc.dim(`${kind.padEnd(8)}${fingerprint}`), description],
+      ([kind, fingerprint, description]): [string, string, string] => [
+        styleForType(kind)(kind),
+        STYLE.muted(fingerprint),
+        description,
+      ],
     ),
-    1,
   ),
   '',
-  `  Output from every script streams with a ${pc.dim('[folder]')} tag;`,
-  `  ${pc.bold('Ctrl+C')} stops every child process hop started.`,
+  `  Output from every script streams with a ${STYLE.muted('[folder]')} tag;`,
+  `  ${STYLE.strong('Ctrl+C')} stops every child process hop started.`,
   '',
-  pc.bold('Smart startup'),
-  `  A busy port is swapped for the next free one: hop checks ${pc.dim('--port')}, ${pc.dim('$PORT')}`,
-  `  and ${pc.dim('.env')}, then hands the child the new ${pc.dim('PORT')}. Scripts that reference a`,
-  `  sibling's port ${pc.dim('(e.g. localhost:4000 or a compose service)')} wait for it to answer,`,
-  `  up to 30 s, before they start — add ${pc.dim('"hop": { "waitFor": [5432] }')} to pin it.`,
+  section('Smart startup', 46),
+  `  A busy port is swapped for the next free one: hop checks ${STYLE.muted('--port')}, ${STYLE.muted('$PORT')}`,
+  `  and ${STYLE.muted('.env')}, then hands the child the new ${STYLE.muted('PORT')}. Scripts that reference a`,
+  `  sibling's port ${STYLE.muted('(e.g. localhost:4000 or a compose service)')} wait for it to answer,`,
+  `  up to 30 s, before they start — add ${STYLE.muted('"hop": { "waitFor": [5432] }')} to pin it.`,
   '',
   `  In a git repository, projects with uncommitted changes are pre-selected.`,
 ].join('\n');
@@ -97,18 +126,31 @@ const detail = (message: string): void => {
 };
 
 const fail = (message: string): void => {
-  console.error(`${PREFIX} ${pc.red(message)}`);
+  console.error(`${PREFIX} ${STYLE.fail(message)}`);
 };
 
-const plural = (count: number, word: string): string => `${pc.bold(String(count))} ${word}${count === 1 ? '' : 's'}`;
-
-function truncate(text: string, max: number): string {
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+/**
+ * The "nothing here" screen: what hop looked for, so the user can see why
+ * nothing was found instead of guessing.
+ */
+function printNothingFound(root: string, reason: string): void {
+  console.log();
+  console.log(`  ${STYLE.warn(GLYPH.warn)} ${STYLE.strong(reason)}`);
+  console.log(`  ${STYLE.muted(`in ${root}`)}`);
+  console.log();
+  console.log(`  ${STYLE.muted('hop looks for')}`);
+  for (const marker of [
+    'package.json with a "scripts" object',
+    'Dockerfile or docker-compose.yml',
+    'main.py, requirements.txt or pyproject.toml',
+    'go.mod',
+  ]) {
+    console.log(`    ${STYLE.muted(GLYPH.bullet)} ${STYLE.muted(marker)}`);
+  }
+  console.log();
 }
 
-function maxWidth(values: string[]): number {
-  return values.reduce((max, value) => Math.max(max, value.length), 0);
-}
+const plural = (count: number, word: string): string => `${STYLE.strong(String(count))} ${word}${count === 1 ? '' : 's'}`;
 
 function terminalWidth(): number {
   const columns = process.stdout.columns;
@@ -140,8 +182,8 @@ function resolveCommand(target: ProjectTarget, script: string, npmMode: boolean)
 /** What a gated spec is waiting for, e.g. `backend :4000 · database :5432`. */
 function dependencyList(gate: DependencyGate): string {
   return gate.dependencies
-    .map((dependency) => `${pc.bold(dependency.name)}${pc.dim(` :${dependency.port}`)}`)
-    .join(pc.dim(` ${GLYPH.dot} `));
+    .map((dependency) => `${STYLE.strong(dependency.name)}${STYLE.muted(` :${dependency.port}`)}`)
+    .join(STYLE.muted(` ${GLYPH.dot} `));
 }
 
 interface RunUi {
@@ -184,14 +226,14 @@ function createRunUi(): RunUi {
   const hooks: RunHooks = {
     onPortRedirect({ name, from, to, color }): void {
       note(
-        `${pc.yellow(GLYPH.warn)} port ${pc.bold(String(from))} was blocked ${pc.dim(GLYPH.dot)} ` +
-          `redirecting ${color(`[${name}]`)} to port ${pc.bold(String(to))}`,
+        `${STYLE.warn(GLYPH.warn)} port ${STYLE.strong(String(from))} was blocked ${STYLE.muted(GLYPH.dot)} ` +
+          `redirecting ${color(`[${name}]`)} to port ${STYLE.strong(String(to))}`,
       );
     },
     onWaitStart(gate): void {
       waitStartedAt.set(gate, Date.now());
       const wanted = dependencyList(gate);
-      const suffix = pc.dim(`before starting ${gate.name}`);
+      const suffix = STYLE.muted(`before starting ${gate.name}`);
       // Only animate while hop is the only thing writing to the terminal.
       if (spin !== null && spinOwner === null && gate.running === 0) {
         spinOwner = gate;
@@ -204,13 +246,13 @@ function createRunUi(): RunUi {
       const wanted = dependencyList(gate);
       const elapsed = formatDuration(Date.now() - (waitStartedAt.get(gate) ?? Date.now()));
       if (outcome === 'ready') {
-        settle(gate, `${pc.green(GLYPH.ok)} ${wanted} ${pc.dim(`is up ${GLYPH.dot} ${elapsed} ${GLYPH.dot} starting ${gate.name}`)}`);
+        settle(gate, `${STYLE.ok(GLYPH.ok)} ${wanted} ${STYLE.muted(`is up ${GLYPH.dot} ${elapsed} ${GLYPH.dot} starting ${gate.name}`)}`);
         return;
       }
       if (outcome === 'timeout') {
         settle(
           gate,
-          `${pc.yellow(GLYPH.warn)} ${wanted} ${pc.dim(`not answering after ${elapsed} ${GLYPH.dot} starting ${gate.name} anyway`)}`,
+          `${STYLE.warn(GLYPH.warn)} ${wanted} ${STYLE.muted(`not answering after ${elapsed} ${GLYPH.dot} starting ${gate.name} anyway`)}`,
         );
         return;
       }
@@ -229,35 +271,41 @@ function createRunUi(): RunUi {
 }
 
 function printProjectList(root: string, targets: ProjectTarget[], npmMode: boolean): void {
-  const nameWidth = maxWidth(targets.map((target) => target.name));
+  const nameWidth = widest(targets.map((target) => target.name));
   const width = terminalWidth();
 
   targets.forEach((target, index) => {
     const color = targetColor(index);
-    const meta = `${pc.dim(target.type.padEnd(6))} ${pc.dim(relativeLabel(root, target.path))}`;
-    console.log(`\n  ${color(target.name.padEnd(nameWidth))}  ${meta}`);
+    const typeStyle = styleForType(target.type);
+    const label = color(padTo(target.name, nameWidth));
+    const meta = `${typeStyle(CHIP)} ${STYLE.muted(target.type)} ${STYLE.muted(GLYPH.dot)} ${STYLE.muted(relativeLabel(root, target.path))}`;
+    console.log(`\n  ${label}  ${meta}`);
 
     const scriptNames = Object.keys(target.scripts);
-    const scriptWidth = maxWidth(scriptNames);
-    for (const script of scriptNames) {
-      const room = Math.max(24, width - 4 - scriptWidth - 4);
+    const scriptWidth = widest(scriptNames);
+    for (const [position, script] of scriptNames.entries()) {
+      const room = Math.max(24, width - 6 - scriptWidth - 4);
       const command = resolveCommand(target, script, npmMode);
-      console.log(`    ${pc.cyan(script.padEnd(scriptWidth))}  ${pc.dim(truncate(command, room))}`);
+      const isLast = position === scriptNames.length - 1;
+      console.log(
+        `    ${branch(`${STYLE.brand(padTo(script, scriptWidth))}  ${STYLE.muted(truncate(command, room))}`, isLast)}`,
+      );
     }
   });
 }
 
 function printRunHeader(specs: RunSpec[]): void {
-  const nameWidth = maxWidth(specs.map((spec) => spec.name));
-  const scriptWidth = maxWidth(specs.map((spec) => spec.script));
+  const nameWidth = widest(specs.map((spec) => spec.name));
+  const scriptWidth = widest(specs.map((spec) => spec.script));
   const width = terminalWidth();
 
   console.log();
   for (const spec of specs) {
-    const color = spec.color ?? ((text: string) => text);
-    const room = Math.max(24, width - 2 - nameWidth - scriptWidth - 4);
-    const label = `${color(spec.name.padEnd(nameWidth))}  ${pc.bold(spec.script.padEnd(scriptWidth))}`;
-    console.log(`  ${label}  ${pc.dim(truncate(spec.command, room))}`);
+    const color = spec.color ?? STYLE.plain;
+    const room = Math.max(24, width - 4 - nameWidth - scriptWidth - 6);
+    const name = color(padTo(spec.name, nameWidth));
+    const script = STYLE.strong(padTo(spec.script, scriptWidth));
+    console.log(`  ${STYLE.muted(GLYPH.bullet)} ${name}  ${script}  ${STYLE.muted(truncate(spec.command, room))}`);
   }
   console.log();
 }
@@ -266,21 +314,24 @@ function printSummary(results: RunResult[], totalMs: number): number {
   const failed = results.filter((result) => !result.ok);
   const succeeded = results.length - failed.length;
   const total = `${succeeded}/${results.length} scripts succeeded`;
+  const elapsed = STYLE.muted(`${GLYPH.dot} ${formatDuration(totalMs)}`);
 
   console.log();
   if (failed.length === 0) {
-    console.log(`  ${pc.green(GLYPH.ok)} ${total} ${pc.dim(`${GLYPH.dot} ${formatDuration(totalMs)}`)}`);
+    console.log(`  ${STYLE.ok(GLYPH.ok)} ${STYLE.ok(total)} ${elapsed}`);
+    console.log();
     return 0;
   }
 
-  console.log(`  ${pc.red(GLYPH.fail)} ${total} ${pc.dim(`${GLYPH.dot} ${formatDuration(totalMs)}`)}`);
+  console.log(`  ${STYLE.fail(GLYPH.fail)} ${STYLE.fail(total)} ${elapsed}`);
   for (const result of failed) {
     const reason =
       result.error ?? (result.signal !== null ? `signal ${result.signal}` : `exit ${String(result.code)}`);
     console.log(
-      `    ${pc.red(GLYPH.fail)} ${result.name} ${pc.dim(result.script)} ${pc.dim(`(${truncate(reason, 60)})`)}`,
+      `    ${STYLE.fail(GLYPH.fail)} ${result.name} ${STYLE.muted(result.script)} ${STYLE.muted(`(${truncate(reason, 60)})`)}`,
     );
   }
+  console.log();
   return 1;
 }
 
@@ -323,7 +374,7 @@ async function execute(specs: RunSpec[], options: RunOptions): Promise<number> {
 
   if (interrupted) {
     console.log();
-    console.log(`  ${pc.yellow(GLYPH.warn)} stopped by signal ${pc.dim(`${GLYPH.dot} all child processes terminated`)}`);
+    console.log(`  ${STYLE.warn(GLYPH.warn)} stopped by signal ${STYLE.muted(`${GLYPH.dot} all child processes terminated`)}`);
     return 130;
   }
 
@@ -335,16 +386,16 @@ async function runDirect(root: string, targets: ProjectTarget[], script: string,
 
   if (matches.length === 0) {
     if (targets.length === 0) {
-      fail(`no runnable project found in ${pc.bold(root)} ${pc.dim(`(scanned ${DEFAULT_MAX_DEPTH} levels deep)`)}`);
+      printNothingFound(root, 'no runnable project found');
       return 1;
     }
     fail(`no project defines a script named "${script}"`);
-    const names = availableScripts(targets).map((name) => pc.cyan(name)).join(pc.dim(` ${GLYPH.dot} `));
-    detail(`${pc.dim('available:')} ${names}`);
+    const names = availableScripts(targets).map((name) => STYLE.brand(name)).join(STYLE.muted(` ${GLYPH.dot} `));
+    detail(`${STYLE.muted('available:')} ${names}`);
     return 1;
   }
 
-  log(`running ${pc.bold(script)} in ${plural(matches.length, 'project')}`);
+  log(`running ${STYLE.strong(STYLE.brand(script))} in ${plural(matches.length, 'project')}`);
   return execute(matches.map((target, index) => specFor(target, script, options.npmMode, targetColor(index))), options);
 }
 
@@ -364,8 +415,7 @@ function releaseStdin(): void {
 
 async function runInteractive(root: string, targets: ProjectTarget[], options: RunOptions): Promise<number> {
   if (targets.length === 0) {
-    log(`no runnable project found in ${pc.bold(root)} ${pc.dim(`(scanned ${DEFAULT_MAX_DEPTH} levels deep)`)}`);
-    detail(pc.dim('looking for package.json · Dockerfile / compose · requirements.txt / pyproject.toml · go.mod'));
+    printNothingFound(root, 'no runnable project found');
     return 0;
   }
 
@@ -381,8 +431,15 @@ async function runInteractive(root: string, targets: ProjectTarget[], options: R
     const color = targetColor(targetIndex);
     const dirty = dirtyCounts.get(target.name);
     const preselected = dirty === undefined ? undefined : primaryScript(target);
-    const label = color(target.name);
-    const heading = dirty === undefined ? label : `${label} ${pc.dim(`${GLYPH.dot} ${dirty} changed`)}`;
+    const typeStyle = styleForType(target.type);
+
+    // The heading carries the project's identity, its ecosystem and — when
+    // there is one — how much work is waiting in the working tree.
+    const parts = [color(target.name), `${typeStyle(CHIP)} ${STYLE.muted(target.type)}`];
+    if (dirty !== undefined) {
+      parts.push(`${STYLE.muted(GLYPH.dot)} ${STYLE.warn(`${dirty} changed`)}`);
+    }
+    const heading = parts.join(' ');
 
     groups[heading] = Object.keys(target.scripts).map((script) => {
       const spec = specFor(target, script, options.npmMode, color);
@@ -393,13 +450,13 @@ async function runInteractive(root: string, targets: ProjectTarget[], options: R
       }
       return {
         value,
-        label: script,
+        label: STYLE.brand(script),
         hint: truncate(spec.command, Math.max(24, width - 36)),
       };
     });
   });
 
-  intro(`${pc.bold('hop')} ${pc.dim(GLYPH.dot)} ${plural(targets.length, 'project')} ${pc.dim('detected')}`);
+  intro(wordmark(`${STYLE.muted(plural(targets.length, 'project'))} ${STYLE.muted('detected')}`));
 
   const picked = await groupMultiselect<number>({
     message: 'Select scripts to run',
@@ -459,7 +516,7 @@ function writeErr(text: string): void {
     .trimEnd()
     .split('\n')
     .forEach((line) => {
-      console.error(`${PREFIX} ${line.startsWith('error:') ? pc.red(line) : pc.dim(line)}`);
+      console.error(`${PREFIX} ${line.startsWith('error:') ? STYLE.fail(line) : STYLE.muted(line)}`);
     });
 }
 
@@ -509,12 +566,14 @@ export async function main(argv: string[]): Promise<number> {
 
   if (options.list === true) {
     if (targets.length === 0) {
-      log(`no runnable project found in ${pc.bold(root)} ${pc.dim(`(scanned ${DEFAULT_MAX_DEPTH} levels deep)`)}`);
+      printNothingFound(root, 'no runnable project found');
       return 0;
     }
-    const names = availableScripts(targets).map((name) => pc.cyan(name)).join(pc.dim(` ${GLYPH.dot} `));
-    log(`${plural(targets.length, 'project')} under ${pc.bold(root)}`);
-    detail(`${pc.dim('scripts:')} ${names}`);
+    const names = availableScripts(targets).map((name) => STYLE.brand(name)).join(STYLE.muted(` ${GLYPH.dot} `));
+    console.log();
+    console.log(`  ${wordmark(`${STYLE.muted(plural(targets.length, 'project'))} ${STYLE.muted('found')}`)}`);
+    console.log();
+    console.log(`  ${STYLE.muted('scripts')}  ${names}`);
     printProjectList(root, targets, runOptions.npmMode);
     console.log();
     return 0;

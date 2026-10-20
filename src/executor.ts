@@ -12,8 +12,12 @@ import {
 } from './health.js';
 import { planPort, rewriteFlagPort, type PortPlan, type PortSource } from './ports.js';
 import type { ProjectType } from './scanner.js';
+import { GLYPH, padTo, STYLE } from './theme.js';
 
 export type Formatter = (text: string) => string;
+
+/** The dim tag every hop message carries. */
+const PREFIX = STYLE.muted('[hop]');
 
 /** One command to run: a script inside a scanned project. */
 export interface RunSpec {
@@ -121,9 +125,13 @@ export interface ExecutorOptions {
   healthIntervalMs?: number;
 }
 
-const PALETTE: readonly Formatter[] = [pc.cyan, pc.magenta, pc.green, pc.yellow, pc.blue, pc.white];
-
-const GLYPH = { ok: '✔', fail: '✖', warn: '⚠' } as const;
+/**
+ * Colours for project identities, in rotation.
+ *
+ * The order is chosen so that adjacent projects never get two neighbouring
+ * hues, and every entry stays legible on both light and dark terminals.
+ */
+const PALETTE: readonly Formatter[] = [pc.cyan, pc.magenta, pc.green, pc.yellow, pc.blue, pc.gray];
 
 /** Deterministic color per position, so the menu and the log tags agree. */
 export function colorForTarget(index: number): Formatter {
@@ -366,7 +374,7 @@ export async function runScripts(specs: RunSpec[], options: ExecutorOptions = {}
     interrupted = true;
     interruptSignal = signal;
     abort.abort();
-    write(`${pc.dim('[hop]')} ${pc.yellow(GLYPH.warn)} received ${signal} — stopping ${children.size} process(es)…\n`);
+    write(`${PREFIX} ${STYLE.warn(GLYPH.warn)} received ${signal} — stopping ${children.size} process(es)…\n`);
     for (const child of children) {
       killProcessTree(child, 'SIGTERM');
     }
@@ -492,7 +500,7 @@ export async function runScripts(specs: RunSpec[], options: ExecutorOptions = {}
   const launch = (spec: RunSpec, index: number): Promise<RunResult> =>
     new Promise<RunResult>((resolve) => {
       const color = colors[index] ?? identity;
-      const tag = `${pc.dim('[')}${color(spec.name.padEnd(maxNameLength))}${pc.dim(']')}`;
+      const tag = `${STYLE.muted('[')}${color(padTo(spec.name, maxNameLength))}${STYLE.muted(']')}`;
       const startedAt = Date.now();
       let settled = false;
 
@@ -529,16 +537,16 @@ export async function runScripts(specs: RunSpec[], options: ExecutorOptions = {}
           ok: error === undefined && code === 0,
           durationMs,
         };
-        const label = `${color(spec.name)} ${spec.script}`;
+        const label = `${color(spec.name)} ${STYLE.strong(spec.script)}`;
         if (error !== undefined) {
           result.error = error;
-          write(`${pc.dim('[hop]')} ${pc.red(GLYPH.fail)} ${label} ${pc.dim('·')} ${pc.red(`failed to start: ${error}`)}\n`);
+          write(`${PREFIX} ${STYLE.fail(GLYPH.fail)} ${label} ${STYLE.muted(GLYPH.dot)} ${STYLE.fail(`failed to start: ${error}`)}\n`);
         } else if (code === 0) {
-          write(`${pc.dim('[hop]')} ${pc.green(GLYPH.ok)} ${label} ${pc.dim(`· ${formatDuration(durationMs)}`)}\n`);
+          write(`${PREFIX} ${STYLE.ok(GLYPH.ok)} ${label} ${STYLE.muted(`· ${formatDuration(durationMs)}`)}\n`);
         } else {
           const reason = signal !== null ? `signal ${signal}` : `exit ${String(code)}`;
           write(
-            `${pc.dim('[hop]')} ${pc.red(GLYPH.fail)} ${label} ${pc.dim('·')} ${pc.red(reason)} ${pc.dim(`· ${formatDuration(durationMs)}`)}\n`,
+            `${PREFIX} ${STYLE.fail(GLYPH.fail)} ${label} ${STYLE.muted(GLYPH.dot)} ${STYLE.fail(reason)} ${STYLE.muted(`· ${formatDuration(durationMs)}`)}\n`,
           );
         }
         resolve(result);

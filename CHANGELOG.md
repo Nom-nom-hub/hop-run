@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **A new look for the whole CLI.** The visual language now lives in one
+  module (`src/theme.ts`) instead of being scattered across the code:
+  - the help screen opens with a `↗ hop` wordmark and every section is
+    separated by a rule;
+  - the project list is drawn as a tree (`├` / `└`) with the ecosystem and the
+    path on the project line;
+  - the project type has its own colour, so node, docker, python and go are
+    readable at a glance;
+  - "nothing found" now explains what hop looked for instead of only saying
+    that it found nothing;
+  - column widths are measured in *visible* characters, so the alignment no
+    longer depends on the terminal having colour support.
+
 ## [0.1.1] - 2026-10-20
 
 ### Fixed
