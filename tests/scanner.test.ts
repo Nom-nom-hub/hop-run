@@ -63,6 +63,28 @@ describe('scan', () => {
     expect(targets[1]?.name).toBe('frontend');
   });
 
+  it('detects a package.json that carries a UTF-8 byte order mark', async () => {
+    // PowerShell 5.1 (`Set-Content -Encoding utf8`) and several older Windows
+    // editors write a BOM, which makes JSON.parse throw and would hide the
+    // project from hop entirely.
+    await writeFile(path.join(root, 'package.json'), `﻿${pkg({ dev: 'vite' })}`, 'utf8');
+
+    const targets = await scan(root);
+
+    expect(targets).toHaveLength(1);
+    expect(targets[0]?.scripts).toEqual({ dev: 'vite' });
+  });
+
+  it('detects a BOM-prefixed package.json in a subdirectory', async () => {
+    await mkdir(path.join(root, 'frontend'), { recursive: true });
+    await writeFile(path.join(root, 'frontend', 'package.json'), `﻿${pkg({ dev: 'vite' })}`, 'utf8');
+
+    const targets = await scan(root);
+
+    expect(targets.map((target) => target.name)).toEqual(['frontend']);
+    expect(targets[0]?.scripts).toEqual({ dev: 'vite' });
+  });
+
   it('detects docker projects (Dockerfile and compose file)', async () => {
     await writeTree(root, {
       database: { 'docker-compose.yml': 'services: {}' },
@@ -178,6 +200,75 @@ describe('scan', () => {
 
     expect(targets.map((target) => target.name)).toEqual(['weird']);
     expect(targets[0]?.scripts).toEqual({ build: 'vite build' });
+  });
+
+  it('ignores a "scripts" array instead of inventing numeric script names', async () => {
+    // An array is not a script map: treating it as one would expose scripts
+    // called "0" and "1" that do not exist in package.json.
+    await writeTree(root, {
+      arrayish: { 'package.json': JSON.stringify({ name: 'arrayish', scripts: ['dev', 'build'] }) },
+    });
+
+    const targets = await scan(root);
+
+    expect(targets).toEqual([]);
+  });
+
+  it('never drops a command when both the plain and the namespaced key are taken', async () => {
+    await writeTree(root, {
+      backend: {
+        'package.json': pkg({ build: 'tsc', 'docker:build': 'my-own-docker-build' }),
+        Dockerfile: 'FROM node:20',
+      },
+    });
+
+    const targets = await scan(root);
+
+    expect(targets[0]?.scripts).toMatchObject({
+      build: 'tsc',
+      'docker:build': 'my-own-docker-build',
+    });
+    // The real `docker build .` is still reachable, under a unique name.
+    const dockerBuild = Object.entries(targets[0]?.scripts ?? {}).find(([, command]) => command === 'docker build .');
+    expect(dockerBuild).toBeDefined();
+  });
+
+  it('marks a directory that holds a compose file next to a package.json', async () => {
+    await writeTree(root, {
+      service: {
+        'package.json': pkg({ dev: 'node server.js' }),
+        'docker-compose.yml': 'services: {}',
+      },
+    });
+
+    const targets = await scan(root);
+
+    expect(targets[0]?.type).toBe('node');
+    expect(targets[0]?.compose).toBe(true);
+  });
+
+  it('drops a monorepo root that orchestrates the workspace below it', async () => {
+    // `turbo dev` starts every package — running the root *and* the packages
+    // would start each dev server twice.
+    await writeTree(root, {
+      'package.json': pkg({ dev: 'turbo dev' }),
+      packages: {
+        web: { 'package.json': pkg({ dev: 'vite' }) },
+        api: { 'package.json': pkg({ dev: 'tsx watch src/index.ts' }) },
+      },
+    });
+
+    const targets = await scan(root);
+
+    expect(targets.map((target) => target.name)).toEqual(['api', 'web']);
+  });
+
+  it('keeps an orchestrating root when it is the only project', async () => {
+    await writeTree(root, { 'package.json': pkg({ dev: 'turbo dev' }) });
+
+    const targets = await scan(root);
+
+    expect(targets.map((target) => target.name)).toEqual([path.basename(root)]);
   });
 
   it('qualifies duplicate directory names with their relative path', async () => {

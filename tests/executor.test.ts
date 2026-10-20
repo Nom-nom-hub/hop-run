@@ -294,6 +294,25 @@ describe('runScripts', () => {
     expect(capture.text()).toContain('failed to start');
   });
 
+  it('survives a working directory that is too long for Windows', async () => {
+    // A path of 260+ characters makes the spawn fail; the stdio socket then
+    // reports its own error. Without a handler that error is uncaught and
+    // takes the whole process down.
+    const capture = createCapture();
+    const longRoot = path.join(root, ...Array.from({ length: 12 }, (_unused, index) => `hop-long-path-${index}`));
+    await mkdir(longRoot, { recursive: true });
+
+    const { results } = await runScripts(
+      [{ name: 'long', dir: longRoot, script: 'dev', command: 'node -e "1"' }],
+      { stream: capture.stream, registerSignalHandlers: false },
+    );
+
+    // Either the command ran or the failure was reported — but hop itself
+    // must not crash.
+    expect(Array.isArray(results)).toBe(true);
+    expect(capture.text()).not.toContain('Unhandled');
+  });
+
   it('puts the project node_modules/.bin on PATH for node targets', async () => {
     const capture = createCapture();
     await writeFixtureTool(path.join(root, 'node_modules', '.bin'), 'fixture-tool');
@@ -639,8 +658,7 @@ describe('dependency handshakes', () => {
     expect(results[0]?.ok).toBe(true); // a missing dependency is advice, not a failure
   });
 
-  it('skips handshakes entirely with waitForDependencies: false', async () => {
-    const capture = createCapture();
+  it('skips handshakes entirely with waitForDependencies: false', async () => {    const capture = createCapture();
     const deadPort = await pickFreePort(28_000);
     await writeFile(
       path.join(root, 'package.json'),
@@ -694,6 +712,50 @@ describe('dependency handshakes', () => {
     expect(results[0]?.error).toBe('not started (interrupted)');
     expect(capture.text()).not.toContain('never starts');
     expect(Date.now() - startedAt).toBeLessThan(5_000);
+  });
+
+  it('keeps the handshake when the service had to move to another port', async () => {
+    // The configured port is taken, so the service is moved. A consumer that
+    // still refers to the old port must keep waiting for the service instead
+    // of starting early and talking to whoever owns that port.
+    const capture = createCapture();
+    const port = await pickFreePort(27_000);
+    const blocker = await holdPort(port);
+    const apiDir = path.join(root, 'api');
+    const frontendDir = path.join(root, 'frontend');
+    await mkdir(apiDir, { recursive: true });
+    await mkdir(frontendDir, { recursive: true });
+    await writeFile(path.join(frontendDir, '.env'), `VITE_API_URL=http://localhost:${port}\n`, 'utf8');
+    await writeFile(path.join(apiDir, 'api.js'), LATE_SERVER_SOURCE, 'utf8');
+
+    const events: string[] = [];
+    const run = runScripts(
+      [
+        { name: 'api', dir: apiDir, script: 'dev', command: `node api.js --port ${port}`, type: 'node' },
+        { name: 'frontend', dir: frontendDir, script: 'dev', command: 'node -e "console.log(\'frontend started\')"', type: 'node' },
+      ],
+      {
+        stream: capture.stream,
+        registerSignalHandlers: true,
+        healthIntervalMs: 25,
+        healthTimeoutMs: 10_000,
+        hooks: {
+          onPortRedirect: (redirect: PortRedirect) => events.push(`redirect:${redirect.from}->${redirect.to}`),
+          onWaitStart: (gate) => events.push(`start:${gate.name}`),
+          onWaitEnd: (gate, outcome) => events.push(`end:${gate.name}:${outcome}`),
+        },
+      },
+    );
+
+    expect(await waitUntil(() => capture.text().includes('frontend started'), 15_000)).toBe(true);
+    process.emit('SIGINT', 'SIGINT');
+    await run;
+    await blocker.close();
+
+    // The service moved, but the consumer still waits for it.
+    expect(events.some((event) => event.startsWith('redirect:'))).toBe(true);
+    expect(events).toContain('start:frontend');
+    expect(events).toContain('end:frontend:ready');
   });
 });
 

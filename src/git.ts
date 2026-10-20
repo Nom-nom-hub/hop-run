@@ -18,16 +18,114 @@ function git(cwd: string, args: string[]): string | null {
   }
 }
 
-/** Unquotes one porcelain path (git quotes paths containing spaces/specials). */
+/**
+ * Unquotes one porcelain path (git quotes paths containing spaces/specials).
+ *
+ * Git's C-style quoting is *not* JSON: a non-ASCII character is written as a
+ * sequence of octal escapes for its UTF-8 *bytes* (`\303\251` for `é`),
+ * which `JSON.parse` rejects. The escapes are decoded here so that a file
+ * named `café.txt` still maps onto the project that owns it.
+ */
 function unquote(raw: string): string {
-  if (raw.length >= 2 && raw.startsWith('"') && raw.endsWith('"')) {
-    try {
-      return JSON.parse(raw) as string;
-    } catch {
-      return raw.slice(1, -1);
+  if (raw.length < 2 || !raw.startsWith('"') || !raw.endsWith('"')) {
+    return raw;
+  }
+  const inner = raw.slice(1, -1);
+
+  // Octal escapes stand for raw bytes, so they are collected and decoded as
+  // UTF-8 in one go; a lone byte would become a replacement character.
+  const bytes: number[] = [];
+  let out = '';
+  let copied = 0; // how much of `inner` has been copied to `out` verbatim
+
+  const flushBytes = (): void => {
+    if (bytes.length > 0) {
+      out += Buffer.from(bytes).toString('utf8');
+      bytes.length = 0;
+    }
+  };
+
+  const pattern = /\\(?:([0-7]{1,3})|(.))/gs;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(inner)) !== null) {
+    const octal = match[1];
+    if (octal !== undefined) {
+      if (bytes.length === 0) {
+        // Start of a byte run: the plain text before it comes first.
+        out += inner.slice(copied, match.index);
+      }
+      copied = match.index + match[0].length;
+      bytes.push(Number.parseInt(octal, 8));
+      continue;
+    }
+
+    // The byte run ends here, so it is decoded before the text that follows.
+    flushBytes();
+    out += inner.slice(copied, match.index); // the plain text before the escape
+    copied = match.index + match[0].length;
+
+    switch (match[2]) {
+      case 'n':
+        out += '\n';
+        break;
+      case 't':
+        out += '\t';
+        break;
+      case 'r':
+        out += '\r';
+        break;
+      case 'b':
+        out += '\b';
+        break;
+      case 'f':
+        out += '\f';
+        break;
+      case 'v':
+        out += '\v';
+        break;
+      case '"':
+        out += '"';
+        break;
+      case '\\':
+        out += '\\';
+        break;
+      default:
+        out += match[2] ?? match[0];
+        break;
     }
   }
-  return raw;
+
+  flushBytes();
+  out += inner.slice(copied); // the plain text after the last escape
+  return out;
+}
+
+/**
+ * Finds the " -> " separator of a rename entry, ignoring an arrow that is
+ * inside a quoted path.
+ *
+ * Git quotes a path only when it contains special characters, and the
+ * separator between the old and the new path is written unquoted. A file can
+ * also be renamed to a name that itself contains " -> ", so the *first*
+ * separator outside quotes is the right one.
+ */
+function findRenameArrow(text: string): number {
+  let quoted = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === '\\') {
+      index += 1; // skip the escaped character
+      continue;
+    }
+    if (char === '"') {
+      quoted = !quoted;
+      continue;
+    }
+    if (!quoted && text.startsWith(' -> ', index)) {
+      return index;
+    }
+  }
+  return -1;
 }
 
 /**
@@ -44,7 +142,7 @@ export function parsePorcelain(output: string): string[] {
     const status = line.slice(0, 2);
     let rest = line.slice(3);
     if (status.includes('R') || status.includes('C')) {
-      const arrow = rest.lastIndexOf(' -> ');
+      const arrow = findRenameArrow(rest);
       if (arrow !== -1) {
         rest = rest.slice(arrow + 4);
       }
@@ -69,7 +167,10 @@ export function changedFiles(cwd: string): string[] {
   if (topLevel === undefined || topLevel === '') {
     return [];
   }
-  const output = git(cwd, ['-c', 'core.quotepath=false', 'status', '--porcelain']);
+  // `-uall` lists every untracked file individually. Without it git collapses a
+  // whole untracked directory into one `?? dir/` entry, which would hide a
+  // newly created project that lives inside that directory.
+  const output = git(cwd, ['-c', 'core.quotepath=false', 'status', '--porcelain', '-uall']);
   if (output === null) {
     return [];
   }

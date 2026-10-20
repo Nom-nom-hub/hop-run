@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
+import { parseJsonText } from './json.js';
 import { parsePort } from './ports.js';
 import type { ProjectType } from './scanner.js';
 
@@ -98,6 +99,29 @@ export async function waitForPort(port: number, options: WaitForPortOptions = {}
 /** `localhost:8080`, `127.0.0.1:5432`, `[::1]:3000` references inside text. */
 const LOCAL_REFERENCE = /(?:localhost|127\.0\.0\.1|\[::1\]):(\d{2,5})/g;
 
+/**
+ * Removes comments from a text file.
+ *
+ * A commented-out or legacy URL is not a live dependency: waiting for a port
+ * that nobody serves costs the full timeout for nothing.
+ */
+export function stripComments(text: string): string {
+  return text
+    .split(/\r?\n/)
+    .map((line) => {
+      const trimmed = line.trimStart();
+      if (trimmed.startsWith('#')) {
+        return '';
+      }
+      // A '#' inside a URL fragment is not a comment, but neither is a '#'
+      // inside a quoted value — only a '#' that follows a value does start a
+      // trailing comment.
+      const hash = line.indexOf('#');
+      return hash === -1 ? line : line.slice(0, hash);
+    })
+    .join('\n');
+}
+
 /** Every localhost-style port mentioned in `text` (deduplicated, in order). */
 export function referencedPortsInText(text: string): number[] {
   const ports: number[] = [];
@@ -136,7 +160,7 @@ export function explicitWaitFor(dir: string): number[] {
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(file, 'utf8'));
+    parsed = parseJsonText(readFileSync(file, 'utf8'));
   } catch {
     return [];
   }
@@ -183,7 +207,9 @@ export function dependencyPorts(source: { dir: string; command?: string }): { ex
       continue;
     }
     try {
-      for (const port of referencedPortsInText(readFileSync(full, 'utf8'))) {
+      // Comments are stripped first: a legacy URL in a comment is not a
+      // dependency, and waiting for it would stall the run.
+      for (const port of referencedPortsInText(stripComments(readFileSync(full, 'utf8')))) {
         if (!referenced.includes(port)) {
           referenced.push(port);
         }
@@ -253,9 +279,16 @@ export function composeHostPortsFromText(text: string): number[] {
   return ports;
 }
 
-/** Host ports a docker/compose target is expected to publish. */
-export function declaredServicePorts(target: { path: string; type?: ProjectType }): number[] {
-  if (target.type !== 'docker') {
+/**
+ * Host ports a docker/compose target is expected to publish.
+ *
+ * The compose files are consulted whenever the directory has one — even when
+ * the directory is mainly a node project. A service directory that holds both
+ * a `package.json` and a compose file still publishes those ports, and hop has
+ * to know them to keep the port reserved and to wire up the handshake.
+ */
+export function declaredServicePorts(target: { path: string; type?: ProjectType; compose?: boolean }): number[] {
+  if (target.type !== 'docker' && target.compose !== true) {
     return [];
   }
   for (const file of COMPOSE_FILES) {

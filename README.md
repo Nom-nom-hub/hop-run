@@ -242,10 +242,17 @@ handling is plain `node:child_process`.
   `pre*`/`post*` hooks via the project's package manager.
 - Port detection only sees `--port`, `$PORT` and `PORT=` in `.env*`. A port that
   is hard-coded elsewhere (config files, `-p` short flags) cannot be swapped —
-  hop leaves it alone rather than guessing wrong.
+  hop leaves it alone rather than guessing wrong. A port that *is* detected is
+  checked on every local address (`127.0.0.1`, `0.0.0.0` and `::`), so a server
+  bound to a wildcard is never mistaken for a free port.
 - Dependency waiting is heuristic: ports referenced by a project are only
   awaited when a *selected* sibling exposes them, unless they are listed in
   `hop.waitFor`. Compose publishing is read from the short `ports:` list syntax.
+  Only real URLs count — a port that is merely mentioned in a comment is
+  ignored.
+- A monorepo root whose script orchestrates the whole workspace (`turbo dev`,
+  `nx dev`, `pnpm -r dev`) is skipped when there are packages below it, so
+  nothing is started twice.
 
 ## License
 

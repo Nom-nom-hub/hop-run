@@ -63,6 +63,31 @@ describe('parsePorcelain', () => {
     expect(parsePorcelain('')).toEqual([]);
     expect(parsePorcelain('\n  \n')).toEqual([]);
   });
+
+  it("decodes git's C-style octal escapes for non-ASCII names", () => {
+    // Git writes `café.txt` as "caf\303\251.txt" — that is C quoting, not
+    // JSON, so JSON.parse would reject it and the file would never match the
+    // project that owns it.
+    const output = ['?? "frontend/caf\\303\\251.txt"', '?? "frontend/na\\303\\257ve.txt"', ''].join('\n');
+
+    expect(parsePorcelain(output)).toEqual(['frontend/café.txt', 'frontend/naïve.txt']);
+  });
+
+  it('decodes the other C escapes git can emit', () => {
+    const output = ['?? "tab\\there.txt"', '?? "back\\\\slash.txt"', '?? "new\\nline.txt"', ''].join('\n');
+
+    expect(parsePorcelain(output)).toEqual(['tab\there.txt', 'back\\slash.txt', 'new\nline.txt']);
+  });
+
+  it('resolves a rename whose new name contains an arrow', () => {
+    // The new path is everything after the *first* separator, so a file may
+    // be renamed to a name that itself contains " -> ".
+    expect(parsePorcelain('R  old.txt -> x -> y.txt')).toEqual(['x -> y.txt']);
+  });
+
+  it('does not mistake an arrow inside a quoted old path for the separator', () => {
+    expect(parsePorcelain('R  "a -> b.txt" -> "c.txt"')).toEqual(['c.txt']);
+  });
 });
 
 describe('dirtyFileCounts / dirtyTargets', () => {
@@ -184,7 +209,9 @@ describe('changedFiles (live repository)', () => {
 
     expect(listsPath(files, path.join(repo, 'frontend', 'src', 'app.ts'))).toBe(true);
     expect(listsPath(files, path.join(repo, 'frontend', 'src', 'new file.ts'))).toBe(true);
-    expect(listsPath(files, path.join(repo, 'frontend', 'src', 'generated'))).toBe(true);
+    // Untracked files are listed individually (`-uall`), so a new project
+    // inside an untracked directory is not hidden behind a collapsed entry.
+    expect(listsPath(files, path.join(repo, 'frontend', 'src', 'generated', 'out.ts'))).toBe(true);
     expect(listsPath(files, path.join(repo, 'backend', 'server.ts'))).toBe(true);
     expect(listsPath(files, path.join(repo, 'renamed.txt'))).toBe(true);
     expect(listsPath(files, path.join(repo, 'docs', 'guide.md'))).toBe(true);
@@ -226,6 +253,19 @@ describe('changedFiles (live repository)', () => {
 
   maybe('returns nothing for a clean working tree', () => {
     expect(changedFiles(repo)).toEqual([]);
+  });
+
+  maybe('sees a new project inside an untracked directory', async () => {
+    // Without `-uall` git collapses the whole untracked `packages/` into one
+    // entry, and a project inside it would never be marked as changed.
+    await writePath(path.join(repo, 'packages', 'team', 'app', 'package.json'), '{}\n');
+
+    const files = changedFiles(repo);
+    const targets: ProjectTarget[] = [
+      { name: 'app', path: path.join(repo, 'packages', 'team', 'app'), type: 'node', scripts: { dev: 'vite' } },
+    ];
+
+    expect(dirtyTargets(targets, files).map((target) => target.name)).toEqual(['app']);
   });
 });
 

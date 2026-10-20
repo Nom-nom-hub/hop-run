@@ -171,6 +171,18 @@ describe('explicitWaitFor', () => {
     await writeFile(path.join(root, 'package.json'), 'not json', 'utf8');
     expect(explicitWaitFor(root)).toEqual([]);
   });
+
+  it('reads the config from a package.json that carries a UTF-8 byte order mark', async () => {
+    // A BOM would otherwise make JSON.parse throw and silently drop the
+    // explicit wait — the dependency would then start too early.
+    await writeFile(
+      path.join(root, 'package.json'),
+      `﻿${JSON.stringify({ name: 'api', hop: { waitFor: [5432] } })}`,
+      'utf8',
+    );
+
+    expect(explicitWaitFor(root)).toEqual([5432]);
+  });
 });
 
 describe('dependencyPorts', () => {
@@ -214,6 +226,18 @@ describe('dependencyPorts', () => {
 
     expect(explicit).toEqual([5432, 6379]);
     expect(referenced).toEqual([]);
+  });
+
+  it('ignores ports that only appear in a comment', async () => {
+    // A commented-out or legacy URL is not a live dependency — waiting for a
+    // port nobody serves would stall the run for the full timeout.
+    await writeFile(
+      path.join(root, '.env'),
+      '# legacy API lived on http://localhost:4000\nDB=postgres://x@localhost:5432/db\n',
+      'utf8',
+    );
+
+    expect(dependencyPorts({ dir: root }).referenced).toEqual([5432]);
   });
 });
 
@@ -284,5 +308,17 @@ describe('declaredServicePorts', () => {
     await writeFile(path.join(root, 'compose.yml'), 'services:\n  worker:\n    image: busybox\n', 'utf8');
 
     expect(declaredServicePorts({ path: root, type: 'docker' })).toEqual([]);
+  });
+
+  it('reads published ports from a node project that also holds a compose file', async () => {
+    // A service directory with a package.json *and* a compose file still
+    // publishes those ports; hop has to know them to keep them reserved.
+    await writeFile(
+      path.join(root, 'docker-compose.yml'),
+      'services:\n  db:\n    image: postgres\n    ports:\n      - "5432:5432"\n',
+      'utf8',
+    );
+
+    expect(declaredServicePorts({ path: root, type: 'node', compose: true })).toEqual([5432]);
   });
 });

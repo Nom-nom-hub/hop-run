@@ -40,6 +40,19 @@ export function parsePort(value: unknown): number | undefined {
 }
 
 /**
+ * Outcome of a single bind probe.
+ *
+ * `free` — the address could be bound.
+ * `busy` — something already holds it (`EADDRINUSE`).
+ * `unavailable` — this address family does not exist on this host
+ * (`EADDRNOTAVAIL`, `EAFNOSUPPORT`, `EPROTONOSUPPORT`), so it says nothing
+ * about the port.
+ */
+type ProbeResult = 'free' | 'busy' | 'unavailable';
+
+const ADDRESS_FAMILY_UNAVAILABLE = new Set(['EADDRNOTAVAIL', 'EAFNOSUPPORT', 'EPROTONOSUPPORT']);
+
+/**
  * True when nothing is listening on `host:port`.
  *
  * The check is a real bind attempt (`exclusive: true`), not a connect: it
@@ -47,25 +60,64 @@ export function parsePort(value: unknown): number | undefined {
  * process that is not accepting connections yet.
  */
 export function isPortFree(port: number, host = '127.0.0.1', timeoutMs = PROBE_TIMEOUT_MS): Promise<boolean> {
+  return probePort(port, host, timeoutMs).then((result) => result !== 'busy');
+}
+
+/** Binds `host:port` once and reports what the OS said. */
+function probePort(port: number, host: string, timeoutMs: number): Promise<ProbeResult> {
   return new Promise((resolve) => {
     const server = net.createServer();
     let settled = false;
 
-    const finish = (free: boolean): void => {
+    const finish = (result: ProbeResult): void => {
       if (settled) {
         return;
       }
       settled = true;
       clearTimeout(timer);
       // close() releases the probe handle before the caller binds for real.
-      server.close(() => resolve(free));
+      server.close(() => resolve(result));
     };
 
-    const timer = setTimeout(() => finish(false), timeoutMs);
-    server.once('error', () => finish(false)); // EADDRINUSE / EACCES / excluded ranges
-    server.once('listening', () => finish(true));
+    const timer = setTimeout(() => finish('busy'), timeoutMs);
+    server.once('error', (error: NodeJS.ErrnoException) => {
+      finish(ADDRESS_FAMILY_UNAVAILABLE.has(error.code ?? '') ? 'unavailable' : 'busy');
+    });
+    server.once('listening', () => finish('free'));
     server.listen({ port, host, exclusive: true });
   });
+}
+
+/**
+ * Addresses a child process is likely to bind to.
+ *
+ * A server that listens on `0.0.0.0` or `::` also occupies the port on every
+ * local address, but the reverse is not true: a listener bound to `127.0.0.1`
+ * leaves `0.0.0.0` bindable. Probing only `127.0.0.1` therefore reports a
+ * port held by a wildcard listener as free, and the child then dies with
+ * `EADDRINUSE` — exactly the failure hop promises to prevent.
+ *
+ * Node's `server.listen(port)` without a host binds the IPv6 wildcard `::`,
+ * so that address has to be probed as well.
+ */
+const PROBE_HOSTS: readonly string[] = ['127.0.0.1', '0.0.0.0', '::'];
+
+/**
+ * True when the port is free on every address a child might bind to.
+ *
+ * Each address is probed with a real exclusive bind. A port counts as taken as
+ * soon as one probe reports `busy`, because a wildcard listener blocks the
+ * child no matter which address the child picks. Addresses the host does not
+ * support are skipped.
+ */
+export async function isPortAvailable(port: number, timeoutMs = PROBE_TIMEOUT_MS): Promise<boolean> {
+  for (const host of PROBE_HOSTS) {
+    const result = await probePort(port, host, timeoutMs);
+    if (result === 'busy') {
+      return false;
+    }
+  }
+  return true;
 }
 
 export interface FindFreePortOptions {
@@ -84,7 +136,10 @@ export async function findFreePort(start: number, options: FindFreePortOptions =
     if (options.reserved?.has(port)) {
       continue;
     }
-    if (await isPortFree(port, options.host)) {
+    // `host` narrows the probe to a single address; without it every address a
+    // child may bind to is checked, so a wildcard listener is never missed.
+    const free = options.host === undefined ? await isPortAvailable(port) : await isPortFree(port, options.host);
+    if (free) {
       return port;
     }
   }
@@ -172,20 +227,26 @@ function envPort(env: NodeJS.ProcessEnv | undefined): number | undefined {
 
 /**
  * Best guess at the port a command intends to listen on.
- * Priority: an explicit `--port` flag, then `$PORT`, then the project's `.env`.
+ *
+ * Priority: an explicit `--port` flag, then the project's own `.env`, then
+ * `$PORT` from the environment.
+ *
+ * The project's `.env` comes before the ambient environment on purpose: a
+ * stray `PORT=3000` in the shell must not make the first project grab 3000
+ * and push every other project's configured port aside.
  */
 export function preferredPort(input: { env?: NodeJS.ProcessEnv; dir: string; command: string }): PortPreference | undefined {
   const fromFlag = readFlagPort(input.command);
   if (fromFlag !== undefined) {
     return { port: fromFlag, source: 'flag' };
   }
-  const fromEnv = envPort(input.env);
-  if (fromEnv !== undefined) {
-    return { port: fromEnv, source: 'env' };
-  }
   const fromDotenv = readDotenvPort(input.dir);
   if (fromDotenv !== undefined) {
     return { port: fromDotenv, source: 'dotenv' };
+  }
+  const fromEnv = envPort(input.env);
+  if (fromEnv !== undefined) {
+    return { port: fromEnv, source: 'env' };
   }
   return undefined;
 }
@@ -216,7 +277,10 @@ export async function planPort(options: PlanPortOptions): Promise<PortPlan | und
   const reserved = options.reserved;
   const taken = reserved?.has(port) ?? false;
 
-  if (!taken && (await isPortFree(port, options.host))) {
+  // An explicit `host` narrows the probe to that address; without it every
+  // address a child may bind to is checked.
+  const available = options.host === undefined ? await isPortAvailable(port) : await isPortFree(port, options.host);
+  if (!taken && available) {
     reserved?.add(port);
     return { port, source, target: port, changed: false, exhausted: false };
   }

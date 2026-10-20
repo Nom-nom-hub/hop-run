@@ -6,6 +6,7 @@ import { cancel, groupMultiselect, intro, isCancel, spinner } from '@clack/promp
 import { Command, CommanderError } from 'commander';
 import pc from 'picocolors';
 import { changedFiles, dirtyFileCounts, primaryScript } from './git.js';
+import { parseJsonText } from './json.js';
 import { availableScripts, DEFAULT_MAX_DEPTH, filterByScript, scan, type ProjectTarget } from './scanner.js';
 import {
   colorForTarget,
@@ -28,33 +29,52 @@ const CONTINUATION = '      '; // aligns with "[hop] "
 
 const VERSION: string = (() => {
   try {
-    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version?: string };
+    const pkg = parseJsonText(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version?: string };
     return pkg.version ?? '0.0.0';
   } catch {
     return '0.0.0';
   }
 })();
 
+/** Lays out `label → description` rows in two aligned columns. */
+function helpRows(rows: Array<[string, string]>, gap = 2): string {
+  const width = rows.reduce((max, [label]) => Math.max(max, label.length), 0);
+  return rows.map(([label, description]) => `  ${label.padEnd(width + gap)}${description}`).join('\n');
+}
+
+const USAGE_ROWS: Array<[string, string]> = [
+  ['hop', `Pick scripts interactively ${pc.dim('(space toggle · enter run)')}`],
+  ['hop <script>', `Run every matching script everywhere ${pc.dim('(e.g. hop dev)')}`],
+  ['hop <script> --npm', `Node scripts via their package manager ${pc.dim('(pre/post hooks run)')}`],
+  ['hop <script> --no-wait', `Start everything at once ${pc.dim('(skip dependency waits)')}`],
+  ['hop --list, -l', 'List detected projects and their scripts'],
+  ['hop --help, -h', 'Show this help'],
+  ['hop --version, -v', 'Print the version'],
+];
+
+const DETECTION_ROWS: Array<[string, string, string]> = [
+  ['node', 'package.json', 'the "scripts" object'],
+  ['docker', 'Dockerfile / compose', 'docker build · docker compose up/down'],
+  ['python', 'requirements / pyproject', 'python main.py · pip install'],
+  ['go', 'go.mod', 'go run . · go test ./...'],
+];
+
 const HELP = [
   `${pc.bold('hop')} ${pc.dim('— zero-config project runner')}`,
   '',
   pc.bold('Usage'),
-  `  ${pc.cyan('hop'.padEnd(22))}Pick scripts interactively ${pc.dim('(space toggle · enter run)')}`,
-  `  ${pc.cyan('hop <script>'.padEnd(22))}Run every matching script everywhere ${pc.dim('(e.g. hop dev)')}`,
-  `  ${pc.cyan('hop <script> --npm'.padEnd(22))}Node scripts via their package manager ${pc.dim('(pre/post hooks run)')}`,
-  `  ${pc.cyan('hop <script> --no-wait'.padEnd(22))}Start everything at once ${pc.dim('(skip dependency waits)')}`,
-  `  ${pc.cyan('hop --list, -l'.padEnd(22))}List detected projects and their scripts`,
-  `  ${pc.cyan('hop --help, -h'.padEnd(22))}Show this help`,
-  `  ${pc.cyan('hop --version, -v'.padEnd(22))}Print the version`,
+  helpRows(USAGE_ROWS.map(([label, description]) => [pc.cyan(label), description])),
   '',
   pc.bold('Detection'),
   `  Scans the current directory and up to ${DEFAULT_MAX_DEPTH} levels below it, skipping`,
   `  node_modules, .git, dist, build, venv and dot-directories.`,
   '',
-  `  ${pc.dim('node'.padEnd(8))}package.json             the "scripts" object`,
-  `  ${pc.dim('docker'.padEnd(8))}Dockerfile / compose     docker build · docker compose up/down`,
-  `  ${pc.dim('python'.padEnd(8))}requirements / pyproject python main.py · pip install`,
-  `  ${pc.dim('go'.padEnd(8))}go.mod                   go run . · go test ./...`,
+  helpRows(
+    DETECTION_ROWS.map(
+      ([kind, fingerprint, description]): [string, string] => [pc.dim(`${kind.padEnd(8)}${fingerprint}`), description],
+    ),
+    1,
+  ),
   '',
   `  Output from every script streams with a ${pc.dim('[folder]')} tag;`,
   `  ${pc.bold('Ctrl+C')} stops every child process hop started.`,
@@ -265,14 +285,22 @@ function printSummary(results: RunResult[], totalMs: number): number {
 }
 
 function specFor(target: ProjectTarget, script: string, npmMode: boolean, color?: Formatter): RunSpec {
+  const command = resolveCommand(target, script, npmMode);
   return {
     name: target.name,
     dir: target.path,
     script,
-    command: resolveCommand(target, script, npmMode),
+    command,
     type: target.type,
+    ...(target.compose ? { compose: true } : {}),
+    ...(isComposeCommand(command) ? { composeCommand: true } : {}),
     ...(color ? { color } : {}),
   };
+}
+
+/** True for a `docker compose …` command, whatever produced it. */
+function isComposeCommand(command: string): boolean {
+  return /^\s*docker\s+compose\b/.test(command);
 }
 
 /** Flags every command path shares. */

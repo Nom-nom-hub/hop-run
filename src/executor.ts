@@ -29,6 +29,14 @@ export interface RunSpec {
   color?: Formatter;
   /** Ecosystem of the target; drives per-type environment setup (e.g. PATH for node). */
   type?: ProjectType;
+  /** True when the directory holds a compose file that publishes host ports. */
+  compose?: boolean;
+  /**
+   * True when *this* command is the compose one (`docker compose up`). A
+   * directory can hold a `package.json` and a compose file at the same time;
+   * the compose command owns its published ports and must not be given one.
+   */
+  composeCommand?: boolean;
 }
 
 /** Package manager a node project is using, inferred from its lockfile. */
@@ -332,12 +340,19 @@ export async function runScripts(specs: RunSpec[], options: ExecutorOptions = {}
   const colors = specs.map((spec, index) => spec.color ?? colorForTarget(index));
 
   const children = new Set<ChildProcess>();
+  /**
+   * Children that have already written something. The animated spinner is
+   * only safe while nothing else is writing to the terminal, and that is
+   * about the output — not about how many children happen to exist.
+   */
+  let producedOutput = false;
   let interrupted = false;
   let interruptSignal: NodeJS.Signals | null = null;
   let forceTimer: NodeJS.Timeout | undefined;
   const abort = new AbortController();
 
   const write = (text: string): void => {
+    producedOutput = true;
     stream.write(text);
   };
 
@@ -375,14 +390,13 @@ export async function runScripts(specs: RunSpec[], options: ExecutorOptions = {}
 
   // --- port planning ---------------------------------------------------------
   // Compose ports are reserved up front: a node app that also wants 5432 is
-  // moved aside even before the container that owns 5432 comes up.
+  // moved aside even before the container that owns 5432 comes up. A service
+  // directory may hold a compose file *and* be a node project, so the compose
+  // files are consulted for every spec.
   const reserved = new Set<number>();
   const services = new Map<number, string>(); // port → name of the spec that exposes it
   for (const spec of specs) {
-    if (spec.type !== 'docker') {
-      continue;
-    }
-    for (const port of declaredServicePorts({ path: spec.dir, type: spec.type })) {
+    for (const port of declaredServicePorts({ path: spec.dir, type: spec.type, compose: spec.compose })) {
       reserved.add(port);
       if (!services.has(port)) {
         services.set(port, spec.name);
@@ -391,8 +405,10 @@ export async function runScripts(specs: RunSpec[], options: ExecutorOptions = {}
   }
 
   const plans = new Map<RunSpec, PortPlan>();
+  /** Original port → the port the service actually listens on now. */
+  const redirects = new Map<number, number>();
   for (const [index, spec] of specs.entries()) {
-    if (spec.type === 'docker') {
+    if (spec.composeCommand === true) {
       continue; // compose files own their published ports; hop only reads them
     }
     const plan = await planPort({ env: baseEnv, dir: spec.dir, command: spec.command, reserved });
@@ -402,6 +418,14 @@ export async function runScripts(specs: RunSpec[], options: ExecutorOptions = {}
     plans.set(spec, plan);
     if (!services.has(plan.target)) {
       services.set(plan.target, spec.name);
+    }
+    if (plan.changed && !services.has(plan.port)) {
+      // The configured port moved, but a sibling may still refer to the
+      // original one. Keeping it mapped to the same service means the
+      // dependency gate still fires instead of letting the consumer start
+      // early and talk to whatever else owns that port.
+      services.set(plan.port, spec.name);
+      redirects.set(plan.port, plan.target);
     }
     if (plan.changed) {
       hooks?.onPortRedirect?.({
@@ -419,7 +443,7 @@ export async function runScripts(specs: RunSpec[], options: ExecutorOptions = {}
   const gates = new Map<RunSpec, DependencyGate>();
   if (waitForDependencies) {
     for (const [index, spec] of specs.entries()) {
-      if (spec.type === 'docker') {
+      if (spec.composeCommand === true) {
         continue; // containers orchestrate their own startup order
       }
       const ownPort = plans.get(spec)?.target;
@@ -441,6 +465,15 @@ export async function runScripts(specs: RunSpec[], options: ExecutorOptions = {}
         const owner = services.get(port);
         if (owner !== undefined && owner !== spec.name) {
           pending.set(port, { name: owner, port, explicit: false });
+        }
+      }
+
+      // A referenced port that was redirected has to be waited for on its new
+      // home — the service will never answer on the old one.
+      for (const dependency of pending.values()) {
+        const moved = redirects.get(dependency.port);
+        if (moved !== undefined) {
+          dependency.port = moved;
         }
       }
 
@@ -532,6 +565,12 @@ export async function runScripts(specs: RunSpec[], options: ExecutorOptions = {}
       child.stderr?.setEncoding('utf8');
       child.stderr?.on('data', (chunk: string) => errSplit.push(chunk));
 
+      // A stdio socket can fail on its own — e.g. when the working directory
+      // is so long that the process cannot be created. Without a handler the
+      // socket's 'error' event is uncaught and takes hop down with it.
+      child.stdout?.on('error', () => undefined);
+      child.stderr?.on('error', () => undefined);
+
       child.once('error', (error) => {
         children.delete(child);
         finish(null, null, error.message);
@@ -545,11 +584,21 @@ export async function runScripts(specs: RunSpec[], options: ExecutorOptions = {}
   const tasks = specs.map(async (spec, index) => {
     const gate = gates.get(spec);
     if (gate !== undefined) {
-      gate.running = children.size;
+      // The spinner is only safe while no child has written yet — the number
+      // of running children says nothing about that.
+      gate.running = producedOutput ? children.size : 0;
       hooks?.onWaitStart?.(gate);
       let outcome: WaitOutcome = 'ready';
+      // All dependencies share one deadline: three dead ports must not cost
+      // three times the timeout.
+      const deadline = Date.now() + healthTimeoutMs;
       for (const dependency of gate.dependencies) {
-        const waitOptions: WaitForPortOptions = { timeoutMs: healthTimeoutMs, signal: abort.signal };
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) {
+          outcome = 'timeout';
+          break;
+        }
+        const waitOptions: WaitForPortOptions = { timeoutMs: remaining, signal: abort.signal };
         if (options.healthIntervalMs !== undefined) {
           waitOptions.intervalMs = options.healthIntervalMs;
         }

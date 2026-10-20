@@ -132,3 +132,32 @@ describe('main with --npm', () => {
     expect(output).not.toContain('POST');
   });
 });
+
+describe('main --help', () => {
+  it('aligns the usage rows in one column', async () => {
+    const capture = captureOutput();
+    let code: number;
+    try {
+      code = await main(['--help']);
+    } finally {
+      capture.restore();
+    }
+
+    const output = capture.text();
+    expect(code).toBe(0);
+
+    // Every usage row starts its description in the same column. A label that
+    // is exactly as wide as the column used to run straight into the text
+    // ("hop <script> --no-waitStart everything at once").
+    const rows = output.split('\n').filter((line) => /^ {2}hop\b/.test(line));
+    expect(rows.length).toBeGreaterThan(3);
+
+    const descriptionColumns = rows.map((row) => {
+      // The description is the first word that starts a capitalised sentence.
+      const match = /^ {2}(\S.*?)( {2,})([A-Z]\S.*)$/.exec(row);
+      return match === null ? -1 : match[1]!.length + match[2]!.length;
+    });
+    expect(descriptionColumns.every((column) => column > 0)).toBe(true);
+    expect(new Set(descriptionColumns).size).toBe(1);
+  });
+});

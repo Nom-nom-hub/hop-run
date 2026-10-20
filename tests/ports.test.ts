@@ -5,6 +5,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   findFreePort,
+  isPortAvailable,
   isPortFree,
   parsePort,
   planPort,
@@ -104,6 +105,64 @@ describe('isPortFree', () => {
   it('reports an unused port as free', async () => {
     const port = await pickFreePort();
     expect(await isPortFree(port)).toBe(true);
+  });
+});
+
+describe('isPortAvailable', () => {
+  /** Starts a server bound to a specific address (not necessarily loopback). */
+  async function holdPortOn(host: string, port = 0): Promise<HeldPort> {
+    return new Promise((resolve, reject) => {
+      const server: Server = createServer();
+      server.once('error', reject);
+      server.listen({ port, host }, () => {
+        const address = server.address();
+        const bound = typeof address === 'object' && address !== null ? address.port : port;
+        resolve({
+          port: bound,
+          close: () =>
+            new Promise<void>((done) => {
+              server.close(() => done());
+            }),
+        });
+      });
+    });
+  }
+
+  it('reports a port held on the loopback address as taken', async () => {
+    const held = await holdPort();
+    try {
+      expect(await isPortAvailable(held.port)).toBe(false);
+    } finally {
+      await held.close();
+    }
+  });
+
+  it('reports a port held on 0.0.0.0 as taken', async () => {
+    // A wildcard listener also occupies the port for a child that binds
+    // 0.0.0.0 or the IPv6 wildcard — probing only 127.0.0.1 would miss it and
+    // the child would die with EADDRINUSE.
+    const held = await holdPortOn('0.0.0.0');
+    try {
+      expect(await isPortAvailable(held.port)).toBe(false);
+    } finally {
+      await held.close();
+    }
+  });
+
+  it('reports a port held on the IPv6 wildcard as taken', async () => {
+    // `server.listen(port)` without a host binds `::` — the most common way a
+    // Node server binds, so this is the case that matters most in practice.
+    const held = await holdPortOn('::');
+    try {
+      expect(await isPortAvailable(held.port)).toBe(false);
+    } finally {
+      await held.close();
+    }
+  });
+
+  it('reports a free port as available', async () => {
+    const port = await pickFreePort();
+    expect(await isPortAvailable(port)).toBe(true);
   });
 });
 
@@ -228,11 +287,25 @@ describe('preferredPort', () => {
     });
   });
 
-  it('prefers the environment over .env (case-insensitively)', () => {
+  it('prefers the project\'s own .env over an ambient environment port', () => {
+    // A stray `PORT=3000` in the shell must not make the first project grab
+    // 3000 and push every other project's configured port aside.
     expect(preferredPort({ env: { port: '8000' }, dir: root, command: 'node server.js' })).toEqual({
-      port: 8000,
-      source: 'env',
+      port: 7000,
+      source: 'dotenv',
     });
+  });
+
+  it('falls back to the environment when the project configures no port', async () => {
+    const bare = await mkdtemp(path.join(tmpdir(), 'hop-nodotenv-'));
+    try {
+      expect(preferredPort({ env: { PORT: '8000' }, dir: bare, command: 'node server.js' })).toEqual({
+        port: 8000,
+        source: 'env',
+      });
+    } finally {
+      await rm(bare, { recursive: true, force: true });
+    }
   });
 
   it('falls back to .env', () => {
@@ -325,6 +398,36 @@ describe('planPort', () => {
     } finally {
       await first.close();
       await second.close();
+    }
+  });
+
+  it('moves a port aside when a wildcard listener holds it', async () => {
+    // A server bound to 0.0.0.0 blocks the child no matter which address the
+    // child picks, so hop has to treat the port as taken.
+    const held = await new Promise<HeldPort>((resolve, reject) => {
+      const server = createServer();
+      server.once('error', reject);
+      server.listen({ port: 0, host: '0.0.0.0' }, () => {
+        const address = server.address();
+        const bound = typeof address === 'object' && address !== null ? address.port : 0;
+        resolve({
+          port: bound,
+          close: () =>
+            new Promise<void>((done) => {
+              server.close(() => done());
+            }),
+        });
+      });
+    });
+
+    try {
+      const plan = await planPort({ env: { PORT: String(held.port) }, dir: root, command: 'node server.js' });
+
+      expect(plan?.changed).toBe(true);
+      expect(plan?.port).toBe(held.port);
+      expect(plan?.target).toBeGreaterThan(held.port);
+    } finally {
+      await held.close();
     }
   });
 });
