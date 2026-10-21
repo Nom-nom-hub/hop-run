@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-21
+
 ### Added
 
 - **A bespoke Ink interface.** The picker and the run view are now drawn with
@@ -34,7 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - column widths are measured in *visible* characters, so the alignment no
     longer depends on the terminal having colour support.
 - The output is unchanged when it is not a terminal: pipes, files and CI logs
-  get the plain, line-oriented version.
+  get the plain, line-oriented version. `hop` without a script prints the
+  project list there instead of opening a picker.
 
 ### Removed
 
