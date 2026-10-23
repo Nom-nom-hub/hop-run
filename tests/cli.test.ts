@@ -133,6 +133,68 @@ describe('main with --npm', () => {
   });
 });
 
+describe('main --depth', () => {
+  let cwd: string;
+  let root: string;
+
+  beforeEach(async () => {
+    cwd = process.cwd();
+    root = await mkdtemp(path.join(tmpdir(), 'hop-cli-depth-'));
+    // A go module four levels down: too deep for the default scan.
+    const deep = path.join(root, 'a', 'b', 'c', 'deep');
+    await mkdir(deep, { recursive: true });
+    await writeFile(path.join(deep, 'go.mod'), 'module example.com/deep\n\ngo 1.22\n', 'utf8');
+    await writeFile(path.join(deep, 'main.go'), 'package main\n\nfunc main() {}\n', 'utf8');
+    process.chdir(root);
+  });
+
+  afterEach(async () => {
+    process.chdir(cwd);
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it('does not reach a project below the default depth', async () => {
+    const capture = captureOutput();
+    let code: number;
+    try {
+      code = await main(['--list']);
+    } finally {
+      capture.restore();
+    }
+
+    expect(code).toBe(0);
+    expect(capture.text()).toContain('no runnable project found');
+  });
+
+  it('reaches it when the depth is raised', async () => {
+    const capture = captureOutput();
+    let code: number;
+    try {
+      code = await main(['--list', '--depth', '5']);
+    } finally {
+      capture.restore();
+    }
+
+    const output = capture.text();
+    expect(code).toBe(0);
+    expect(output).toContain('deep');
+    expect(output).toContain('go run .');
+  });
+
+  it('refuses a depth that is not a number', async () => {
+    const capture = captureOutput();
+    let code: number;
+    try {
+      code = await main(['--list', '--depth', 'abc']);
+    } finally {
+      capture.restore();
+    }
+
+    expect(code).toBe(1);
+    expect(capture.text()).toContain('--depth needs a number of levels');
+  });
+});
+
 describe('main --help', () => {
   it('aligns the usage rows in one column', async () => {
     const capture = captureOutput();

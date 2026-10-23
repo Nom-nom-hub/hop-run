@@ -39,6 +39,7 @@ const USAGE: UsageRow[] = [
   { command: 'hop <script>', description: 'Run every matching script everywhere (e.g. hop dev)' },
   { command: 'hop <script> --npm', description: 'Node scripts via their package manager (pre/post hooks run)' },
   { command: 'hop <script> --no-wait', description: 'Start everything at once (skip dependency waits)' },
+  { command: 'hop --depth <levels>', description: 'Scan deeper than the default (e.g. hop --depth 5)' },
   { command: 'hop --list, -l', description: 'List detected projects and their scripts' },
   { command: 'hop --help, -h', description: 'Show this help' },
   { command: 'hop --version, -v', description: 'Print the version' },
@@ -54,7 +55,7 @@ const DETECTION: DetectionRow[] = [
   { kind: 'node', fingerprint: 'package.json', description: 'the "scripts" object' },
   { kind: 'docker', fingerprint: 'Dockerfile / compose', description: 'docker build · docker compose up/down' },
   { kind: 'python', fingerprint: 'requirements / pyproject', description: 'python main.py · pip install' },
-  { kind: 'go', fingerprint: 'go.mod', description: 'go run . · go test ./...' },
+  { kind: 'go', fingerprint: 'go.mod / *.go', description: 'go run . · go test ./...' },
 ];
 
 /** A titled section with a rule underneath. */

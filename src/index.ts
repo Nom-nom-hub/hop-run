@@ -78,6 +78,7 @@ const USAGE_ROWS: Array<[string, string]> = [
   ['hop <script>', `Run every matching script everywhere ${STYLE.muted('(e.g. hop dev)')}`],
   ['hop <script> --npm', `Node scripts via their package manager ${STYLE.muted('(pre/post hooks run)')}`],
   ['hop <script> --no-wait', `Start everything at once ${STYLE.muted('(skip dependency waits)')}`],
+  ['hop --depth <levels>', `Scan deeper than ${DEFAULT_MAX_DEPTH} levels ${STYLE.muted('(e.g. hop --depth 5)')}`],
   ['hop --list, -l', 'List detected projects and their scripts'],
   ['hop --help, -h', 'Show this help'],
   ['hop --version, -v', 'Print the version'],
@@ -87,7 +88,7 @@ const DETECTION_ROWS: Array<[string, string, string]> = [
   ['node', 'package.json', 'the "scripts" object'],
   ['docker', 'Dockerfile / compose', 'docker build · docker compose up/down'],
   ['python', 'requirements / pyproject', 'python main.py · pip install'],
-  ['go', 'go.mod', 'go run . · go test ./...'],
+  ['go', 'go.mod / *.go', 'go run . · go test ./...'],
 ];
 
 const HELP = [
@@ -148,7 +149,7 @@ function printNothingFound(root: string, reason: string): void {
     'package.json with a "scripts" object',
     'Dockerfile or docker-compose.yml',
     'main.py, requirements.txt or pyproject.toml',
-    'go.mod',
+    'go.mod, or a directory with Go sources',
   ]) {
     console.log(`    ${STYLE.muted(GLYPH.bullet)} ${STYLE.muted(marker)}`);
   }
@@ -661,6 +662,23 @@ function comparePaths(a: string, b: string): boolean {
   return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
 }
 
+/**
+ * The scan depth asked for on the command line.
+ *
+ * `undefined` means "not given" — the default depth is used. `null` means
+ * the value was given but is not a usable number.
+ */
+function parseDepth(value: string | undefined): number | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    return null;
+  }
+  return parsed;
+}
+
 /** Commander writes its errors through here so they match hop's look. */
 function writeErr(text: string): void {
   text
@@ -680,6 +698,7 @@ function createProgram(): Command {
     .argument('[script]', 'run this script in every matching project')
     .option('--npm', 'run node scripts through their package manager (pre/post hooks run)')
     .option('--no-wait', 'start every script at once, without waiting for dependencies')
+    .option('-d, --depth <levels>', `how many levels to scan below the current directory (default ${DEFAULT_MAX_DEPTH})`)
     .option('-l, --list', 'list detected projects and their scripts')
     .helpOption(false) // hop prints its own styled help
     .option('-h, --help', 'show this help')
@@ -702,7 +721,13 @@ export async function main(argv: string[]): Promise<number> {
     throw error;
   }
 
-  const options = program.opts<{ npm?: boolean; list?: boolean; help?: boolean; wait?: boolean }>();
+  const options = program.opts<{
+    npm?: boolean;
+    list?: boolean;
+    help?: boolean;
+    wait?: boolean;
+    depth?: string;
+  }>();
   if (options.help === true) {
     if (isInteractive()) {
       await renderOnce(React.createElement(Help, { maxDepth: DEFAULT_MAX_DEPTH }));
@@ -712,12 +737,20 @@ export async function main(argv: string[]): Promise<number> {
     return 0;
   }
 
+  // A deeper scan is slower but reaches monorepos that hide a level or two
+  // deeper than the default.
+  const depth = parseDepth(options.depth);
+  if (depth === null) {
+    console.error(`  ${STYLE.warn(GLYPH.warn)} ${STYLE.strong('--depth')} ${STYLE.muted('needs a number of levels')}`);
+    return 1;
+  }
+
   const root = process.cwd();
   const runOptions: RunOptions = {
     npmMode: options.npm === true,
     waitForDependencies: options.wait !== false,
   };
-  const targets = await scan(root);
+  const targets = await scan(root, depth === undefined ? {} : { maxDepth: depth });
 
   if (options.list === true) {
     if (targets.length === 0) {

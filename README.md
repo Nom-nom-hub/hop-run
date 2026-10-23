@@ -73,6 +73,7 @@ hop                 # interactive picker: projects as groups, scripts as items
 hop dev             # run every script named "dev" found while scanning
 hop dev --npm       # same, but through npm/pnpm/yarn/bun (pre/post hooks run)
 hop dev --no-wait   # start everything at once, skip dependency handshakes
+hop --depth 5       # scan five levels below the current directory
 hop --list          # print detected projects and their scripts
 hop --help
 hop --version
@@ -90,7 +91,11 @@ In a git repository, projects with uncommitted changes are **pre-selected**
 
 Scans the current directory **and up to 3 levels below it**, skipping
 `node_modules`, `.git`, `dist`, `build`, `venv`, other common output folders and
-dot-directories.
+dot-directories. Use `--depth <levels>` to reach further:
+
+```bash
+hop --depth 5          # scan five levels below the current directory
+```
 
 | Environment | Fingerprint files                   | Scripts exposed                              |
 | ----------- | ----------------------------------- | -------------------------------------------- |
@@ -100,6 +105,7 @@ dot-directories.
 | Python      | `requirements.txt`, `pyproject.toml`| `install` → `pip install …`                  |
 | Python      | `main.py`                           | `run` → `python main.py`                     |
 | Go          | `go.mod`                            | `run` → `go run .`, `test` → `go test ./...` |
+| Go          | `*.go` (no `go.mod`)                | `run` → `go run main.go`                     |
 
 Details:
 
@@ -109,6 +115,41 @@ Details:
 - Duplicate folder names are qualified with their path (`apps/api` vs
   `services/api`).
 - A directory's name is used as the output tag and as the project name.
+
+### Go projects
+
+hop understands the two shapes a Go project comes in.
+
+**A module** — a directory with a `go.mod`. The module's own commands work
+from its root, so hop offers `go test ./...`, and `go run .` when the root is
+itself a program:
+
+```
+myapp/
+  go.mod
+  main.go        → hop sees: run → go run ., test → go test ./...
+```
+
+**A module whose programs live in `cmd/`** — the root is not a program, so
+hop does not offer a `run` there; each program below it is a project of its
+own, and runs inside the module:
+
+```
+myapp/
+  go.mod
+  cmd/api/       → hop sees: run → go run .
+  cmd/worker/    → hop sees: run → go run .
+```
+
+**A program without a module** — `go run .` refuses to start without a
+`go.mod`, so hop names the files instead:
+
+```
+myapp/
+  main.go        → hop sees: run → go run main.go
+```
+
+A `vendor/` directory is skipped: it holds third-party sources, not projects.
 
 ## How node scripts run
 
@@ -264,6 +305,10 @@ behaviour is the same; only the presentation changes.
   plain-text version instead, and `hop` without a script prints the project
   list rather than opening a picker.
 - Symlinked directories are not followed (avoids cycles).
+- The scan reaches 3 levels below the current directory by default; `--depth`
+  raises it. A Go module deeper than that is out of reach.
+- A Go module whose root is not a program has no `run` script — the programs
+  under `cmd/` are the ones to run.
 - No workspace-manager awareness (pnpm/turbo/nx); hop goes by fingerprints on
   disk only.
 - By default only the selected script's command runs; use `--npm` to honour

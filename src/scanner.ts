@@ -1,4 +1,5 @@
-import { readdir, readFile, realpath } from 'node:fs/promises';
+import { open, readdir, readFile, realpath } from 'node:fs/promises';
+import type { FileHandle } from 'node:fs/promises';
 import path from 'node:path';
 import { parseJsonText } from './json.js';
 
@@ -47,6 +48,9 @@ export const DEFAULT_IGNORED_DIRS: readonly string[] = [
   '.nuxt',
   '.turbo',
   '.cache',
+  // Go's equivalent of node_modules: third-party sources copied into the
+  // tree by `go mod vendor`. They are dependencies, not projects.
+  'vendor',
 ];
 
 /**
@@ -133,7 +137,93 @@ async function readJsonObject(file: string): Promise<Record<string, unknown> | n
   }
 }
 
-async function fingerprintDir(dir: string, names: Set<string>): Promise<RawTarget | null> {
+/** How much of a Go file is read to find its package clause. */
+const GO_FILE_HEAD_BYTES = 512;
+
+/** A Go package found in a directory. */
+interface GoPackage {
+  /** The package clause, e.g. `main` or `api`. */
+  name: string;
+  /** The files that are not tests. */
+  files: string[];
+  /** The `*_test.go` files. */
+  testFiles: string[];
+}
+
+/**
+ * The package clause of a Go file.
+ *
+ * The clause is the first thing in the file, after any build tag or
+ * comment, so only the head of the file has to be read.
+ */
+async function readGoPackageName(file: string): Promise<string | undefined> {
+  let handle: FileHandle | undefined;
+  try {
+    handle = await open(file, 'r');
+    const buffer = Buffer.alloc(GO_FILE_HEAD_BYTES);
+    const { bytesRead } = await handle.read(buffer, 0, GO_FILE_HEAD_BYTES, 0);
+    for (const line of buffer.subarray(0, bytesRead).toString('utf8').split('\n')) {
+      const trimmed = line.trim();
+      if (trimmed === '' || trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')) {
+        continue;
+      }
+      return /^package\s+(\w+)/.exec(trimmed)?.[1];
+    }
+    return undefined;
+  } catch {
+    return undefined; // unreadable file: it simply says nothing about the package
+  } finally {
+    if (handle) {
+      await handle.close().catch(() => undefined);
+    }
+  }
+}
+
+/**
+ * The Go packages in a directory, grouped by their package clause.
+ *
+ * A directory can hold several packages side by side, and naming only the
+ * files of one of them is what keeps `go run` from failing with
+ * "found packages main and lib".
+ */
+async function readGoPackages(dir: string, goFiles: string[]): Promise<GoPackage[]> {
+  const groups = new Map<string, GoPackage>();
+  for (const name of goFiles) {
+    const packageName = await readGoPackageName(path.join(dir, name));
+    if (packageName === undefined) {
+      continue;
+    }
+    let group = groups.get(packageName);
+    if (!group) {
+      group = { name: packageName, files: [], testFiles: [] };
+      groups.set(packageName, group);
+    }
+    if (name.endsWith('_test.go')) {
+      group.testFiles.push(name);
+    } else {
+      group.files.push(name);
+    }
+  }
+  return [...groups.values()];
+}
+
+/** What the scanner knows about the Go code in one directory. */
+interface GoContext {
+  /** The directory holds a `go.mod` of its own. */
+  hasModule: boolean;
+  /**
+   * A module is in reach — this directory has a `go.mod`, or one of its
+   * ancestors does, or a `go.work` puts it in a workspace.
+   *
+   * It changes the commands: inside a module `go run .` works, outside one
+   * it refuses to start.
+   */
+  inModule: boolean;
+  /** The packages found in this directory. */
+  packages: GoPackage[];
+}
+
+async function fingerprintDir(dir: string, names: Set<string>, go: GoContext): Promise<RawTarget | null> {
   const scripts: Record<string, string> = {};
   const contributes: Record<ProjectType, boolean> = { node: false, docker: false, python: false, go: false };
 
@@ -183,11 +273,36 @@ async function fingerprintDir(dir: string, names: Set<string>): Promise<RawTarge
     contributes.python = true;
   }
 
-  // Go: go.mod
-  if (names.has('go.mod')) {
-    addScript(scripts, 'run', 'go run .', 'go');
+  // Go: a module, or the sources of a program that has no module yet.
+  const main = go.packages.find((pkg) => pkg.name === 'main');
+  if (go.hasModule) {
+    // A module: its own commands work from the root. `go run .` only works
+    // when the root is itself a program, so it is offered only then.
     addScript(scripts, 'test', 'go test ./...', 'go');
+    if (main && main.files.length > 0) {
+      addScript(scripts, 'run', 'go run .', 'go');
+    }
     contributes.go = true;
+  } else if (main && main.files.length > 0) {
+    // A program without a module of its own. Inside a module `go run .`
+    // works; outside one it refuses to start ("go.mod file not found"),
+    // and naming the files is the way to run it.
+    if (go.inModule) {
+      addScript(scripts, 'run', 'go run .', 'go');
+    } else {
+      addScript(scripts, 'run', `go run ${main.files.join(' ')}`, 'go');
+    }
+    if (main.testFiles.length > 0) {
+      addScript(scripts, 'test', go.inModule ? 'go test .' : `go test ${[...main.files, ...main.testFiles].join(' ')}`, 'go');
+    }
+    contributes.go = true;
+  } else {
+    // No program here, but a library can still be tested.
+    const testable = go.packages.find((pkg) => pkg.testFiles.length > 0);
+    if (testable) {
+      addScript(scripts, 'test', go.inModule ? 'go test .' : `go test ${[...testable.files, ...testable.testFiles].join(' ')}`, 'go');
+      contributes.go = true;
+    }
   }
 
   if (Object.keys(scripts).length === 0) {
@@ -267,7 +382,7 @@ export async function scan(rootDir: string, options: ScanOptions = {}): Promise<
    */
   const visitedRealPaths = new Set<string>();
 
-  async function visit(dir: string, depth: number): Promise<void> {
+  async function visit(dir: string, depth: number, insideModule: boolean): Promise<void> {
     let entries;
     try {
       entries = await readdir(dir, { withFileTypes: true });
@@ -276,10 +391,27 @@ export async function scan(rootDir: string, options: ScanOptions = {}): Promise<
     }
 
     const names = new Set(entries.map((entry) => entry.name));
+    const goFiles = entries
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.go'))
+      .map((entry) => entry.name)
+      .sort();
+    const hasModule = names.has('go.mod');
+    // A `go.work` puts the whole tree in a workspace, which is a module
+    // context just like a `go.mod` is.
+    const inModule = insideModule || hasModule || names.has('go.work');
     // A `build`/`out`/`target` directory is build output: the manifest it may
     // hold is an artifact, not a project. Projects *inside* it are still found.
-    const isBuildOutput = depth > 0 && AMBIGUOUS_IGNORED_DIRS.includes(path.basename(dir));
-    const target = isBuildOutput ? null : await fingerprintDir(dir, names);
+    // A go.mod is the exception — Go never writes one into build output, so
+    // it is proof of a real module.
+    const isBuildOutput =
+      depth > 0 && AMBIGUOUS_IGNORED_DIRS.includes(path.basename(dir)) && !hasModule;
+    const target = isBuildOutput
+      ? null
+      : await fingerprintDir(dir, names, {
+          hasModule,
+          inModule,
+          packages: await readGoPackages(dir, goFiles),
+        });
     if (target) {
       found.push(target);
     }
@@ -310,10 +442,10 @@ export async function scan(rootDir: string, options: ScanOptions = {}): Promise<
       subdirs.push(subdir);
     }
 
-    await Promise.all(subdirs.map((subdir) => visit(subdir, depth + 1)));
+    await Promise.all(subdirs.map((subdir) => visit(subdir, depth + 1, inModule)));
   }
 
-  await visit(root, 0);
+  await visit(root, 0, false);
 
   // A monorepo root that orchestrates its workspace (`turbo dev`) would start
   // every package below it *and* the packages themselves. The root is dropped

@@ -118,7 +118,12 @@ describe('scan', () => {
   });
 
   it('detects go projects', async () => {
-    await writeTree(root, { service: { 'go.mod': 'module example.com/service' } });
+    await writeTree(root, {
+      service: {
+        'go.mod': 'module example.com/service',
+        'main.go': 'package main\n\nfunc main() {}\n',
+      },
+    });
 
     const targets = await scan(root);
 
@@ -130,6 +135,86 @@ describe('scan', () => {
         scripts: { run: 'go run .', test: 'go test ./...' },
       },
     ]);
+  });
+
+  it('detects a go program that has no go.mod', async () => {
+    await writeTree(root, { tool: { 'main.go': 'package main\n\nfunc main() {}\n' } });
+
+    const targets = await scan(root);
+
+    // `go run .` needs a module, so the files are named instead.
+    expect(targets).toEqual([
+      {
+        name: 'tool',
+        path: path.join(root, 'tool'),
+        type: 'go',
+        scripts: { run: 'go run main.go' },
+      },
+    ]);
+  });
+
+  it('names every file of a go program that has no go.mod', async () => {
+    await writeTree(root, {
+      tool: {
+        'main.go': 'package main\n\nfunc main() { helper() }\n',
+        'helper.go': 'package main\n\nfunc helper() {}\n',
+      },
+    });
+
+    const targets = await scan(root);
+
+    expect(targets[0]?.scripts).toEqual({ run: 'go run helper.go main.go' });
+  });
+
+  it('offers a go library its tests, but no run', async () => {
+    await writeTree(root, {
+      lib: { 'lib.go': 'package lib\n\nfunc Hi() {}\n', 'lib_test.go': 'package lib\n\nfunc TestHi(t *testing.T) {}\n' },
+    });
+
+    const targets = await scan(root);
+
+    expect(targets[0]?.scripts).toEqual({ test: 'go test lib.go lib_test.go' });
+  });
+
+  it('gives a go module without a program of its own no run command', async () => {
+    await writeTree(root, {
+      app: {
+        'go.mod': 'module example.com/app',
+        cmd: { api: { 'main.go': 'package main\n\nfunc main() {}\n' } },
+      },
+    });
+
+    const targets = await scan(root);
+
+    // `go run .` in the module root would fail: there is no program there.
+    expect(targets[0]).toMatchObject({ name: 'app', type: 'go', scripts: { test: 'go test ./...' } });
+    expect(targets[0]?.scripts).not.toHaveProperty('run');
+    // The program below it is a project of its own, and runs in the
+    // module's context.
+    expect(targets[1]).toMatchObject({ name: 'api', type: 'go', scripts: { run: 'go run .' } });
+  });
+
+  it('ignores a go vendor directory', async () => {
+    await writeTree(root, {
+      app: {
+        'go.mod': 'module example.com/app',
+        vendor: { 'example.com': { lib: { 'go.mod': 'module example.com/lib', 'lib.go': 'package lib\n' } } },
+      },
+    });
+
+    const targets = await scan(root);
+
+    expect(targets.map((target) => target.name)).toEqual(['app']);
+  });
+
+  it('finds a go module inside a directory named build', async () => {
+    await writeTree(root, {
+      build: { 'go.mod': 'module example.com/tools', 'main.go': 'package main\n\nfunc main() {}\n' },
+    });
+
+    const targets = await scan(root);
+
+    expect(targets.map((target) => target.name)).toEqual(['build']);
   });
 
   it('skips ignored directories such as node_modules, .git, dist, build and venv', async () => {

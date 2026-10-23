@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-23
+
+### Fixed
+
+- **Go projects are detected again.** hop looked for a `go.mod` and nothing
+  else, so a Go program without a module was invisible:
+  - a directory with Go sources is now a project, even without a `go.mod`.
+    `go run .` refuses to start without a module ("go.mod file not found in
+    current directory"), so the files are named instead — `go run main.go`;
+  - a module whose root is not a program no longer offers a `run` command
+    that could only fail. The programs under `cmd/` are found as projects of
+    their own and run inside the module;
+  - a Go module inside `build/`, `out/` or `target/` is found. Go never writes
+    a `go.mod` into build output, so it is proof of a real module;
+  - a `vendor/` directory is skipped. It holds third-party sources, not
+    projects — the same reason `node_modules` is skipped.
+- The "nothing found" screen now says hop looks for a directory with Go
+  sources, not only for a `go.mod`.
+
+### Added
+
+- **`--depth <levels>`.** The scan reaches 3 levels below the current
+  directory by default, which misses projects nested deeper in a monorepo.
+  `hop --depth 5` reaches further.
+
 ## [0.2.0] - 2026-10-21
 
 ### Added
